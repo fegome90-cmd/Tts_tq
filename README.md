@@ -140,6 +140,28 @@ uv run python scripts/transcribe_reference.py \
   --reference-text-file /path/to/corrected.txt
 ```
 
+### Compare Reference Configurations
+
+Run a small reproducible matrix from one or more bundles:
+
+```bash
+uv run python scripts/compare_reference_configs.py \
+  --bundle voice_profiles/felipe/refs/pitch/bundle.json \
+  --text "Hola, soy Felipe. Esta es una prueba corta de mi voz para comparar configuraciones." \
+  --text-label neutral
+```
+
+Default comparison matrix per bundle:
+- `auto + icl`
+- `auto + embedding`
+
+Optional targeted case:
+- `--include-spanish-icl`
+
+Expected output:
+- generated WAV files under `output/voice_compare/<text-label>/`
+- `manifest.json` with per-case status, output path, duration, and errors if any
+
 ## Configuration
 
 Environment variables:
