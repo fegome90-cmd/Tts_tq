@@ -110,6 +110,36 @@ Expected output:
 - short candidate segments (`segment_01.wav`, etc.)
 - `metadata.json` with scores and recommended segment
 
+### Transcribe Prepared Reference
+
+Once a prepared reference exists, generate an initial transcript and reusable
+bundle for ICL workflows:
+
+```bash
+uv run python scripts/transcribe_reference.py \
+  --metadata voice_profiles/felipe/refs/pitch/metadata.json \
+  --model small \
+  --language es
+```
+
+Expected output:
+- `transcription.auto.txt` with the automatic transcript
+- `bundle.json` with:
+  - recommended segment path
+  - reference text
+  - transcription source
+  - validation flag
+  - score
+  - mode recommendation
+
+To manually correct the transcript, edit the generated text file and rerun with:
+
+```bash
+uv run python scripts/transcribe_reference.py \
+  --metadata voice_profiles/felipe/refs/pitch/metadata.json \
+  --reference-text-file /path/to/corrected.txt
+```
+
 ## Configuration
 
 Environment variables:
