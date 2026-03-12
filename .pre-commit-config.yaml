@@ -1,0 +1,50 @@
+# Pre-commit configuration - https://pre-commit.com/
+# Verified: pre-commit v6.x compatible hooks
+
+fail_fast: true
+
+repos:
+  # Ruff - linter + formatter (NO separate formatter hook needed!)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # Mypy - type checking (v1.19.x latest)
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.19.0
+    hooks:
+      - id: mypy
+        additional_dependencies: [mypy]
+        args: [--strict, --ignore-missing-imports]
+        types: [python]
+        exclude: "^\\.venv/"
+
+  # Pytest - run tests on changed files
+  - repo: https://github.com/pytest-dev/pytest-pre-commit
+    rev: v0.0.1
+    hooks:
+      - id: pytest
+        args: [--tests-only, --timeout=120]
+        stages: [pre-commit]
+
+  # Pre-commit-hooks - standard checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: ['--maxkb=5000']
+      - id: detect-private-key
+
+  # Bandit - security linting
+  - repo: https://github.com/Lucas-C/pre-commit-hooks-bandit
+    rev: v1.0.5
+    hooks:
+      - id: python-bandit
+        args: [-x, B413]  # skip blacklist (requires hashlib)

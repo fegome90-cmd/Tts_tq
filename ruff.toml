@@ -1,0 +1,41 @@
+# Ruff configuration - https://docs.astral.sh/ruff/
+# Verified: ruff v0.9.x compatible
+
+target-version = "py312"
+line-length = 100
+indent-width = 4
+
+# Enable preview mode for latest rules
+preview = true
+
+[format]
+# Formatter config - no separate package needed!
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "lf"
+
+[lint]
+select = [
+    "E",      # pycodestyle errors
+    "F",      # pyflakes
+    "I",      # isort (replaces isort package)
+    "N",      # pep8-naming
+    "W",      # pycodestyle warnings
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "SIM",    # flake8-simplify
+    "PT",     # pytest (replaces pytest-plugins)
+    "PERF",   # perflint
+    "RUF",    # ruff-specific rules
+]
+ignore = ["E501"]  # line too long (handled by formatter)
+
+[lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/*" = ["S101", "PT"]  # Allow assert in tests, pytest style
+
+# Fix configuration
+fixable = ["ALL"]
+unfixable = ["B"]
