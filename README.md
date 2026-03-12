@@ -93,6 +93,23 @@ with QwenTTSClient(model_path="...", device="mps") as client:
     audio = client.clone_voice(profile, "This text will be spoken in my voice!")
 ```
 
+### Prepare Reference Audio
+
+Use the helper script to normalize a local recording, slice it into candidate
+segments, and generate metadata with a recommended segment:
+
+```bash
+uv run python scripts/prepare_reference.py \
+  --input /path/to/audio.mp3 \
+  --speaker felipe \
+  --max-segments 3
+```
+
+Expected output:
+- normalized WAV under `voice_profiles/<speaker>/refs/<input-stem>/source.wav`
+- short candidate segments (`segment_01.wav`, etc.)
+- `metadata.json` with scores and recommended segment
+
 ## Configuration
 
 Environment variables:
