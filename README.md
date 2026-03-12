@@ -117,6 +117,18 @@ uv run pytest tests/unit/ --cov=src --cov-report=html
 uv run pytest tests/integration/ -v -m slow
 ```
 
+## Baseline for Voice Cloning Comparisons
+
+The official baseline for short cloning comparisons is documented in:
+
+- `.pi/plan/baseline-reference.md`
+
+It defines:
+- baseline model;
+- reference A/B candidates;
+- canonical short texts;
+- subjective scoring rubric for timbre, accent, intonation, and drift.
+
 ## ComfyUI Integration
 
 For visual exploration of models, see `comfyui/` directory:
