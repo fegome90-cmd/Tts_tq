@@ -47,6 +47,7 @@ dmypy.json
 # Project specific
 output/
 voice_profiles/
+explore/
 *.wav
 *.mp3
 *.flac
