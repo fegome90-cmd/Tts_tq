@@ -53,6 +53,23 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _require_boolean(payload: dict[str, object], key: str) -> bool:
+    value = payload[key]
+    if not isinstance(value, bool):
+        raise SystemExit(f"Bundle field '{key}' must be a boolean")
+    return value
+
+
+def _require_existing_path(payload: dict[str, object], key: str) -> str:
+    value = payload[key]
+    if not isinstance(value, str) or not value.strip():
+        raise SystemExit(f"Bundle field '{key}' must be a non-empty path string")
+    resolved = Path(value).expanduser().resolve()
+    if not resolved.exists():
+        raise SystemExit(f"Bundle field '{key}' points to a missing file: {resolved}")
+    return str(resolved)
+
+
 def _load_bundle(path: Path) -> ReferenceBundle:
     if not path.exists():
         raise SystemExit(f"Bundle not found: {path}")
@@ -66,11 +83,11 @@ def _load_bundle(path: Path) -> ReferenceBundle:
         warnings = tuple(str(item) for item in payload.get("warnings", []))
         return ReferenceBundle(
             speaker=str(payload["speaker"]),
-            segment_path=str(payload["segment_path"]),
-            source_audio_path=str(payload["source_audio_path"]),
+            segment_path=_require_existing_path(payload, "segment_path"),
+            source_audio_path=_require_existing_path(payload, "source_audio_path"),
             reference_text=str(payload["reference_text"]),
             transcription_source=str(payload["transcription_source"]),
-            transcription_validated=bool(payload["transcription_validated"]),
+            transcription_validated=_require_boolean(payload, "transcription_validated"),
             score=float(payload["score"]),
             recommended_segment_index=int(payload["recommended_segment_index"]),
             mode_recommendation=str(payload["mode_recommendation"]),
@@ -125,13 +142,18 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     bundle_paths = [Path(item).expanduser().resolve() for item in args.bundle]
-    bundles = [_load_bundle(path) for path in bundle_paths]
+    bundles = [(path, _load_bundle(path)) for path in bundle_paths]
 
     model = Qwen3TTSModel.from_pretrained(args.model_path, device_map=args.device)
     results: list[ComparisonResult] = []
 
-    for bundle in bundles:
-        cases = build_default_cases(bundle, target_text=args.text, text_label=args.text_label)
+    for bundle_path, bundle in bundles:
+        cases = build_default_cases(
+            bundle,
+            bundle_path=str(bundle_path),
+            target_text=args.text,
+            text_label=args.text_label,
+        )
         if args.include_spanish_icl:
             cases.append(
                 cases[0].__class__(
@@ -159,7 +181,15 @@ def main() -> None:
     )
     manifest_path = output_dir / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False))
+
+    success_count = sum(1 for result in results if result.status == "success")
+    failure_count = sum(1 for result in results if result.status == "failed")
+
     print(f"Manifest: {manifest_path}")
+    print(f"Summary: {success_count} succeeded, {failure_count} failed")
+
+    if failure_count > 0:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

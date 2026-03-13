@@ -95,7 +95,7 @@ def build_reference_bundle(
     if float(score) < 0.6:
         warnings.append("recommended_segment_low_score")
 
-    mode_recommendation = "icl" if reference_text.strip() else "embedding"
+    mode_recommendation = "icl"
     return ReferenceBundle(
         speaker=speaker,
         segment_path=str(Path(recommended["path"])),

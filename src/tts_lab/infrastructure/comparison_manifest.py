@@ -51,14 +51,20 @@ def slugify(value: str) -> str:
     return lowered or "case"
 
 
-def build_default_cases(bundle: ReferenceBundle, *, target_text: str, text_label: str) -> list[ComparisonCase]:
+def build_default_cases(
+    bundle: ReferenceBundle,
+    *,
+    bundle_path: str,
+    target_text: str,
+    text_label: str,
+) -> list[ComparisonCase]:
     """Build the default small comparison matrix for one bundle."""
     bundle_slug = slugify(Path(bundle.segment_path).stem)
     warnings = bundle.warnings
     base = [
         ComparisonCase(
             case_id=f"{bundle_slug}-auto-icl",
-            bundle_path=bundle.segment_path,
+            bundle_path=bundle_path,
             segment_path=bundle.segment_path,
             text_label=text_label,
             target_text=target_text,
@@ -69,7 +75,7 @@ def build_default_cases(bundle: ReferenceBundle, *, target_text: str, text_label
         ),
         ComparisonCase(
             case_id=f"{bundle_slug}-auto-embedding",
-            bundle_path=bundle.segment_path,
+            bundle_path=bundle_path,
             segment_path=bundle.segment_path,
             text_label=text_label,
             target_text=target_text,

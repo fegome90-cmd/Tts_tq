@@ -27,23 +27,38 @@ def _bundle() -> ReferenceBundle:
     )
 
 
+def _bundle_json_path() -> str:
+    return "/tmp/bundle.json"
+
+
 def test_slugify_produces_stable_case_id():
     assert slugify("Text 1 / Neutral") == "text-1-neutral"
 
 
 def test_build_default_cases_returns_small_matrix():
     bundle = _bundle()
-    cases = build_default_cases(bundle, target_text="hola", text_label="neutral")
+    cases = build_default_cases(
+        bundle,
+        bundle_path=_bundle_json_path(),
+        target_text="hola",
+        text_label="neutral",
+    )
 
     assert len(cases) == 2
     assert cases[0].mode == "icl"
     assert cases[1].mode == "embedding"
     assert all(case.language == "auto" for case in cases)
+    assert all(case.bundle_path == _bundle_json_path() for case in cases)
 
 
 def test_build_manifest_serializes_cases():
     bundle = _bundle()
-    case = build_default_cases(bundle, target_text="hola", text_label="neutral")[0]
+    case = build_default_cases(
+        bundle,
+        bundle_path=_bundle_json_path(),
+        target_text="hola",
+        text_label="neutral",
+    )[0]
     result = ComparisonResult(
         case=case,
         status="success",
@@ -63,3 +78,4 @@ def test_build_manifest_serializes_cases():
     assert manifest["target_text"] == "hola"
     assert manifest["cases"][0]["status"] == "success"
     assert manifest["cases"][0]["case"]["mode"] == "icl"
+    assert manifest["cases"][0]["case"]["bundle_path"] == _bundle_json_path()
