@@ -8,11 +8,12 @@ import json
 from pathlib import Path
 
 import soundfile as sf
-from qwen_tts import Qwen3TTSModel  # type: ignore[import-untyped]
+from qwen_tts import Qwen3TTSModel  # type: ignore[import-not-found]
 
 from tts_lab.infrastructure.comparison_manifest import (
     ComparisonCase,
     ComparisonResult,
+    build_case_prefix,
     build_default_cases,
     build_manifest,
     slugify,
@@ -53,6 +54,13 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _require_string(payload: dict[str, object], key: str) -> str:
+    value = payload[key]
+    if not isinstance(value, str) or not value.strip():
+        raise SystemExit(f"Bundle field '{key}' must be a non-empty string")
+    return value.strip()
+
+
 def _require_boolean(payload: dict[str, object], key: str) -> bool:
     value = payload[key]
     if not isinstance(value, bool):
@@ -60,13 +68,34 @@ def _require_boolean(payload: dict[str, object], key: str) -> bool:
     return value
 
 
-def _require_existing_path(payload: dict[str, object], key: str) -> str:
+def _require_int(payload: dict[str, object], key: str) -> int:
     value = payload[key]
-    if not isinstance(value, str) or not value.strip():
-        raise SystemExit(f"Bundle field '{key}' must be a non-empty path string")
-    resolved = Path(value).expanduser().resolve()
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise SystemExit(f"Bundle field '{key}' must be an integer")
+    return value
+
+
+def _require_float(payload: dict[str, object], key: str) -> float:
+    value = payload[key]
+    if isinstance(value, bool) or not isinstance(value, float | int):
+        raise SystemExit(f"Bundle field '{key}' must be a number")
+    return float(value)
+
+
+def _require_string_list(payload: dict[str, object], key: str) -> tuple[str, ...]:
+    value = payload.get(key, [])
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise SystemExit(f"Bundle field '{key}' must be a list of strings")
+    return tuple(value)
+
+
+def _require_existing_path(payload: dict[str, object], key: str) -> str:
+    raw_path = _require_string(payload, key)
+    resolved = Path(raw_path).expanduser().resolve()
     if not resolved.exists():
         raise SystemExit(f"Bundle field '{key}' points to a missing file: {resolved}")
+    if not resolved.is_file():
+        raise SystemExit(f"Bundle field '{key}' must point to a file: {resolved}")
     return str(resolved)
 
 
@@ -80,19 +109,18 @@ def _load_bundle(path: Path) -> ReferenceBundle:
     if not isinstance(payload, dict):
         raise SystemExit("Bundle root must be a JSON object")
     try:
-        warnings = tuple(str(item) for item in payload.get("warnings", []))
         return ReferenceBundle(
-            speaker=str(payload["speaker"]),
+            speaker=_require_string(payload, "speaker"),
             segment_path=_require_existing_path(payload, "segment_path"),
             source_audio_path=_require_existing_path(payload, "source_audio_path"),
-            reference_text=str(payload["reference_text"]),
-            transcription_source=str(payload["transcription_source"]),
+            reference_text=_require_string(payload, "reference_text"),
+            transcription_source=_require_string(payload, "transcription_source"),
             transcription_validated=_require_boolean(payload, "transcription_validated"),
-            score=float(payload["score"]),
-            recommended_segment_index=int(payload["recommended_segment_index"]),
-            mode_recommendation=str(payload["mode_recommendation"]),
-            language=str(payload["language"]),
-            warnings=warnings,
+            score=_require_float(payload, "score"),
+            recommended_segment_index=_require_int(payload, "recommended_segment_index"),
+            mode_recommendation=_require_string(payload, "mode_recommendation"),
+            language=_require_string(payload, "language"),
+            warnings=_require_string_list(payload, "warnings"),
         )
     except KeyError as exc:
         raise SystemExit(f"Bundle is missing required field: {exc}") from exc
@@ -117,6 +145,10 @@ def _run_case(
             case.language,
             voice_clone_prompt=prompt,
         )
+        if not wavs:
+            raise ValueError("Model returned empty audio")
+        if sample_rate <= 0:
+            raise ValueError("Model returned a non-positive sample rate")
         sf.write(output_path, wavs[0], sample_rate)
         duration_seconds = len(wavs[0]) / sample_rate
         return ComparisonResult(
@@ -132,7 +164,7 @@ def _run_case(
             status="failed",
             output_path=None,
             duration_seconds=None,
-            error_message=str(exc),
+            error_message=f"{type(exc).__name__}: {exc}",
         )
 
 
@@ -155,9 +187,10 @@ def main() -> None:
             text_label=args.text_label,
         )
         if args.include_spanish_icl:
+            case_prefix = build_case_prefix(bundle, bundle_path=str(bundle_path))
             cases.append(
-                cases[0].__class__(
-                    case_id=f"{slugify(Path(bundle.segment_path).stem)}-spanish-icl",
+                ComparisonCase(
+                    case_id=f"{case_prefix}-spanish-icl",
                     bundle_path=cases[0].bundle_path,
                     segment_path=cases[0].segment_path,
                     text_label=cases[0].text_label,

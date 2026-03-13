@@ -47,6 +47,13 @@ def _require_string(data: dict[str, Any], key: str) -> str:
     return value
 
 
+def _require_existing_file(path: str, *, key: str) -> str:
+    resolved = Path(path).expanduser().resolve()
+    if not resolved.exists() or not resolved.is_file():
+        raise ValueError(f"metadata field '{key}' must point to an existing file")
+    return str(resolved)
+
+
 def _recommended_segment(metadata: dict[str, Any]) -> dict[str, Any]:
     segments = metadata.get("segments")
     if not isinstance(segments, list) or not segments:
@@ -82,7 +89,7 @@ def build_reference_bundle(
         raise ValueError("transcription_source cannot be empty")
 
     speaker = _require_string(metadata, "speaker")
-    normalized_path = _require_string(metadata, "normalized_path")
+    normalized_path = _require_existing_file(_require_string(metadata, "normalized_path"), key="normalized_path")
     recommended = _recommended_segment(metadata)
 
     score = recommended.get("metrics", {}).get("score")
@@ -95,10 +102,12 @@ def build_reference_bundle(
     if float(score) < 0.6:
         warnings.append("recommended_segment_low_score")
 
+    recommended_segment_path = _require_existing_file(str(recommended["path"]), key="recommended segment file")
+
     mode_recommendation = "icl"
     return ReferenceBundle(
         speaker=speaker,
-        segment_path=str(Path(recommended["path"])),
+        segment_path=recommended_segment_path,
         source_audio_path=normalized_path,
         reference_text=reference_text.strip(),
         transcription_source=transcription_source.strip(),
