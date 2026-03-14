@@ -21,18 +21,37 @@ def _load_script_module() -> ModuleType:
     if isinstance(cached_module, ModuleType) and hasattr(cached_module, "_load_bundle"):
         return cached_module
 
-    soundfile_module = cast(Any, sys.modules.setdefault("soundfile", ModuleType("soundfile")))
-    soundfile_module.write = lambda *args, **kwargs: None
+    previous_soundfile = sys.modules.get("soundfile")
+    previous_qwen = sys.modules.get("qwen_tts")
 
-    qwen_module = cast(Any, sys.modules.setdefault("qwen_tts", ModuleType("qwen_tts")))
-    qwen_module.Qwen3TTSModel = object
+    soundfile_module = ModuleType("soundfile")
+    soundfile_module.write = lambda *args, **kwargs: None  # type: ignore[attr-defined]
+
+    qwen_module = ModuleType("qwen_tts")
+    qwen_module.Qwen3TTSModel = object  # type: ignore[attr-defined]
+
+    sys.modules["soundfile"] = cast(Any, soundfile_module)
+    sys.modules["qwen_tts"] = cast(Any, qwen_module)
 
     spec = importlib.util.spec_from_file_location(SCRIPT_MODULE_NAME, SCRIPT_PATH)
     if spec is None or spec.loader is None:
         raise AssertionError("Unable to load compare_reference_configs.py")
     module = importlib.util.module_from_spec(spec)
     sys.modules[SCRIPT_MODULE_NAME] = module
-    spec.loader.exec_module(module)
+
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        if previous_soundfile is None:
+            sys.modules.pop("soundfile", None)
+        else:
+            sys.modules["soundfile"] = previous_soundfile
+
+        if previous_qwen is None:
+            sys.modules.pop("qwen_tts", None)
+        else:
+            sys.modules["qwen_tts"] = previous_qwen
+
     return module
 
 

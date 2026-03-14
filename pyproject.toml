@@ -82,6 +82,7 @@ namespace_packages = true
 explicit_package_bases = true
 cache_dir = ".mypy_cache"
 sqlite_cache = true
+mypy_path = "src"
 exclude = ["^\\.venv$", "^\\.git$", "^build$", "^dist$"]
 
 [[tool.mypy.overrides]]
@@ -98,6 +99,5 @@ module = [
     "huggingface_hub.*",
     "accelerate.*",
     "torchaudio.*",
-    "tts_lab.*",
 ]
 ignore_missing_imports = true

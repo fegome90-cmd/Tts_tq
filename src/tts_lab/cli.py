@@ -9,7 +9,7 @@ import typer
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from tts_lab.application.dto import GenerateSpeechRequest
+from tts_lab.application.dto import GenerateSpeechRequest, Language
 from tts_lab.application.use_cases import GenerateSpeechUseCase
 from tts_lab.domain.entities import VoiceProfile
 from tts_lab.infrastructure.config import TTSConfig
@@ -21,21 +21,45 @@ console = Console()
 # Single app with multiple commands
 app = typer.Typer(help="TTS Lab - Voice Cloning Laboratory")
 
+CLONE_REFERENCE_AUDIO_ARG = typer.Argument(..., help="Path to reference audio file")
+CLONE_REFERENCE_TEXT_OPTION = typer.Option(
+    ..., "--ref-text", "-r", help="Transcription of reference audio"
+)
+CLONE_TEXT_OPTION = typer.Option(..., "--text", "-t", help="Text to speak with cloned voice")
+CLONE_OUTPUT_OPTION = typer.Option(Path("output/cloned.wav"), "--output", "-o", help="Output path")
+CLONE_MODEL_OPTION = typer.Option(
+    "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+    "--model",
+    "-m",
+    help="HuggingFace model ID or local path",
+)
+CLONE_DEVICE_OPTION = typer.Option("mps", "--device", "-d", help="Device (mps, cuda, cpu)")
+
+GENERATE_TEXT_ARG = typer.Argument(..., help="Text to convert to speech")
+GENERATE_OUTPUT_OPTION = typer.Option(Path("output/speech.wav"), "--output", "-o", help="Output path")
+GENERATE_LANGUAGE_OPTION = typer.Option(
+    "Auto", "--language", "-l", help="Language (Spanish, English, Auto)"
+)
+GENERATE_SPEAKER_OPTION = typer.Option(None, "--speaker", "-s", help="Speaker name")
+GENERATE_INSTRUCT_OPTION = typer.Option(None, "--instruct", "-i", help="Voice style instructions")
+GENERATE_MODEL_OPTION = typer.Option(
+    "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+    "--model",
+    "-m",
+    help="HuggingFace model ID or local path",
+)
+GENERATE_DEVICE_OPTION = typer.Option("mps", "--device", "-d", help="Device (mps, cuda, cpu)")
+
 
 @app.command("clone")
 def clone_voice(
-    reference_audio: Path = typer.Argument(..., help="Path to reference audio file"),
-    reference_text: str = typer.Option(..., "--ref-text", "-r", help="Transcription of reference audio"),
-    text: str = typer.Option(..., "--text", "-t", help="Text to speak with cloned voice"),
-    output: Path = typer.Option(Path("output/cloned.wav"), "--output", "-o", help="Output path"),
-    model_path: str = typer.Option(
-        "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
-        "--model",
-        "-m",
-        help="HuggingFace model ID or local path",
-    ),
-    device: str = typer.Option("mps", "--device", "-d", help="Device (mps, cuda, cpu)"),
-):
+    reference_audio: Path = CLONE_REFERENCE_AUDIO_ARG,
+    reference_text: str = CLONE_REFERENCE_TEXT_OPTION,
+    text: str = CLONE_TEXT_OPTION,
+    output: Path = CLONE_OUTPUT_OPTION,
+    model_path: str = CLONE_MODEL_OPTION,
+    device: str = CLONE_DEVICE_OPTION,
+) -> None:
     """Clone voice from reference audio and generate speech.
 
     Example:
@@ -74,28 +98,20 @@ def clone_voice(
 
 @app.command("generate")
 def generate_speech(
-    text: str = typer.Argument(..., help="Text to convert to speech"),
-    output: Path = typer.Option(Path("output/speech.wav"), "--output", "-o", help="Output path"),
-    language: str = typer.Option(
-        "Auto", "--language", "-l", help="Language (Spanish, English, Auto)"
-    ),
-    speaker: str | None = typer.Option(None, "--speaker", "-s", help="Speaker name"),
-    instruct: str | None = typer.Option(
-        None, "--instruct", "-i", help="Voice style instructions"
-    ),
-    model_path: str = typer.Option(
-        "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
-        "--model",
-        "-m",
-        help="HuggingFace model ID or local path",
-    ),
-    device: str = typer.Option("mps", "--device", "-d", help="Device (mps, cuda, cpu)"),
-):
+    text: str = GENERATE_TEXT_ARG,
+    output: Path = GENERATE_OUTPUT_OPTION,
+    language: Language = GENERATE_LANGUAGE_OPTION,
+    speaker: str | None = GENERATE_SPEAKER_OPTION,
+    instruct: str | None = GENERATE_INSTRUCT_OPTION,
+    model_path: str = GENERATE_MODEL_OPTION,
+    device: str = GENERATE_DEVICE_OPTION,
+) -> None:
     """Generate speech from text using preset voices.
 
     Example:
         tts generate "Hello world!" -l English -s Serena -o output.wav
     """
+    _ = speaker, instruct
     config = TTSConfig(model_path=model_path, device=device, output_dir=str(output.parent))
 
     with Progress(

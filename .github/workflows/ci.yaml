@@ -31,7 +31,7 @@ jobs:
         run: uv sync --all-extras
 
       - name: Run Ruff
-        uses: astral-sh/ruff-action@v3
+        run: uv run ruff check src tests
 
   # Job 2: Type checking with mypy
   typecheck:
@@ -52,7 +52,7 @@ jobs:
         run: uv sync --all-extras
 
       - name: Run mypy
-        run: mypy src/
+        run: uv run mypy src/
 
   # Job 3: Testing with pytest
   test:
@@ -74,7 +74,7 @@ jobs:
         run: uv sync --all-extras
 
       - name: Run pytest with coverage
-        run: pytest --cov=tts_lab --cov-report=xml --cov-report=term-missing --cov-fail-under=80
+        run: uv run pytest tests/unit/ -v --cov=src --cov-report=xml --cov-report=term-missing --cov-fail-under=80
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
