@@ -2,9 +2,10 @@
 """
 Generar voz clonada desde pitch.mp3 (audio real del examen)
 """
-from qwen_tts import Qwen3TTSModel
-import soundfile as sf
 from pathlib import Path
+
+import soundfile as sf
+from qwen_tts import Qwen3TTSModel
 
 # Configuración con NUEVO audio de referencia (pitch.mp3)
 REF_AUDIO = "voice_profiles/felipe/pitch_segment_15s_fixed.wav"
