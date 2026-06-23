@@ -1,0 +1,27 @@
+aliases:
+  - phrase: "session persistence"
+    add_anchors: ["session.md", "session append"]
+  - phrase: "ciclo search-get"
+    add_anchors: ["ctx search", "ctx get"]
+  - phrase: "persistencia de sesión"
+    add_anchors: ["session.md", "session append"]
+  - phrase: "cómo usar session"
+    add_anchors: ["session.md", "session append"]
+  - phrase: "documentación de session"
+    add_anchors: ["session.md", "doc"]
+  - phrase: "protocolo de sesión"
+    add_anchors: ["session.md", "protocolo"]
+  - phrase: "crear segmento"
+    add_anchors: ["trifecta create", "segment"]
+  - phrase: "validar contexto"
+    add_anchors: ["ctx validate", "context pack"]
+  - phrase: "sincronizar contexto"
+    add_anchors: ["ctx sync", "build"]
+  - phrase: "agregar evidencia"
+    add_anchors: ["session append", "evidence"]
+  - phrase: "limpiar repositorio"
+    add_anchors: ["git worktree", "hygiene"]
+  - phrase: "constitucion agéntica"
+    add_anchors: ["AGENTS.md", "leyes"]
+  - phrase: "warmup inteligencia"
+    add_anchors: ["warmup", "graph index"]

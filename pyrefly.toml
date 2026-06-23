@@ -1,0 +1,6 @@
+# Pyrefly Type-checking Configuration
+project-includes = ["**/*.py*"]
+project-excludes = ["**/node_modules", "**/__pycache__", "**/*venv/**"]
+use-ignore-files = true
+python-version = "3.12"
+untyped-def-behavior = "check-and-infer-return-type"

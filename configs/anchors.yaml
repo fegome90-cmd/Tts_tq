@@ -1,0 +1,52 @@
+anchors:
+  strong:
+    files:
+      - "agent.md"
+      - "session.md"
+      - "skill.md"
+      - "prime.md"
+      - "readme.md"
+      - "readme_tf.md"
+      - "context_pack.json"
+    dirs:
+      - "docs/"
+      - "src/"
+      - "_ctx/"
+      - "tests/"
+      - "configs/"
+      - ".ai/"
+    exts:
+      - ".md"
+      - ".py"
+      - ".json"
+      - ".yaml"
+      - ".sh"
+    symbols_terms:
+      - "class"
+      - "def"
+      - "import"
+      - "from"
+      - "return"
+  weak:
+    intent_terms:
+      - "template"
+      - "example"
+      - "how-to"
+      - "runbook"
+      - "doc"
+      - "docs"
+      - "documentación"
+      - "protocolo"
+      - "configuración"
+      - "implementación"
+    doc_terms:
+      - "guía"
+      - "manual"
+      - "uso"
+      - "cómo"
+      - "how"
+      - "howto"
+      - "why"
+      - "what"
+      - "dónde"
+      - "where"

@@ -1,0 +1,33 @@
+# Tts_Tq_Backup - LLM Reference
+
+> Quick reference for agents. See AGENTS.md for governance.
+
+---
+
+## L0: Quick Reference
+- **Sync**: `make sync`
+- **Search**: `make search Q='query'`
+- **Warmup**: `make warmup` (Activate AST/LSP)
+- **Status**: `make status`
+
+## Required Reading Order
+1. AGENTS.md (Governance)
+2. skill.md (Project Rules)
+3. _ctx/agent_tts_tq_backup.md (Tech Stack)
+4. _ctx/session_tts_tq_backup.md (Current Context)
+
+## Stale Fail-Closed Protocol
+If `stale_detected=true` or validation fails:
+1. STOP immediately.
+2. Run: `make sync`.
+3. Run: `trifecta ctx validate --segment .`.
+4. Continue ONLY if PASS.
+
+---
+## Project Structure
+- `src/`: Source code
+- `.ai/`: Agential infrastructure
+- `configs/`: Semantic anchors & aliases
+- `_ctx/`: Context pack & telemetry
+- `ADR/`: Architecture Decision Records
+- `scripts/`: Operational scripts
