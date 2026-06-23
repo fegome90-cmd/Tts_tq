@@ -67,3 +67,11 @@ comfyui/models/
 # only diagnostic surface for this repo.
 comfyui/
 .worktrees/
+
+# Local tool caches and runtime state (not source).
+.trifecta/
+.ruff_cache/
+.ai/
+# Pi runtime state — plan/ contains valuable markdown plans, the rest is scratch.
+.pi/*
+!.pi/plan/
