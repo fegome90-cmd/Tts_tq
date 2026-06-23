@@ -69,6 +69,7 @@ python_functions = ["test_*"]
 
 [tool.mypy]
 python_version = "3.12"
+mypy_path = "src"
 strict = true
 warn_return_any = true
 warn_unused_ignores = true
@@ -98,6 +99,5 @@ module = [
     "huggingface_hub.*",
     "accelerate.*",
     "torchaudio.*",
-    "tts_lab.*",
 ]
 ignore_missing_imports = true

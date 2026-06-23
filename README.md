@@ -27,7 +27,7 @@ src/tts_lab/
 
 ### Requirements
 
-- Python 3.14+
+- Python 3.12+
 - uv package manager
 - Apple Silicon Mac (MPS) or CUDA GPU
 
@@ -46,11 +46,11 @@ uv run pytest tests/unit/ -v --cov=src --cov-report=term-missing
 ### CLI Commands
 
 ```bash
-# Generate speech with preset voice
-uv run tts-generate speech "Hello world!" -l English -s Serena -o output.wav
+# Generate speech with a CustomVoice preset voice
+uv run tts generate "Hello world!" -l English -s Serena -o output.wav
 
-# Clone voice from reference audio
-uv run tts-clone voice reference.wav "Reference text transcription." "Text to speak" -o cloned.wav
+# Clone voice from reference audio with the Base model (Spanish + ICL by default)
+uv run tts clone reference.wav --ref-text "Reference text transcription." --text "Text to speak" -o cloned.wav
 ```
 
 ### Python API
@@ -80,6 +80,8 @@ with QwenTTSClient(
 
 ### Voice Cloning
 
+Voice cloning uses `Qwen/Qwen3-TTS-12Hz-1.7B-Base` by default. The clone path defaults to Spanish and ICL mode (`x_vector_only_mode=False`). Use `--embedding-only` when you explicitly want embedding-only cloning. Preset speaker generation remains on `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice`.
+
 ```python
 from tts_lab.domain.entities import VoiceProfile
 
@@ -89,8 +91,13 @@ profile = VoiceProfile(
     reference_text="This is a recording of my voice for cloning."
 )
 
-with QwenTTSClient(model_path="...", device="mps") as client:
-    audio = client.clone_voice(profile, "This text will be spoken in my voice!")
+with QwenTTSClient(model_path="Qwen/Qwen3-TTS-12Hz-1.7B-Base", device="mps") as client:
+    audio = client.clone_voice(
+        profile,
+        "This text will be spoken in my voice!",
+        language="Spanish",
+        x_vector_only_mode=False,
+    )
 ```
 
 ### Prepare Reference Audio
@@ -226,8 +233,8 @@ Tts_tq/
 
 ## Models
 
-- [Qwen3-TTS-12Hz-1.7B-CustomVoice](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice) - Voice cloning
-- [Qwen3-TTS-12Hz-1.7B-Base](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base) - Base model
+- [Qwen3-TTS-12Hz-1.7B-CustomVoice](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice) - Preset/custom voice speech generation
+- [Qwen3-TTS-12Hz-1.7B-Base](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base) - Reference-audio voice cloning
 
 ## License
 
