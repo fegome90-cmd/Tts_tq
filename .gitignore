@@ -58,3 +58,12 @@ comfyui/models/
 # Environment
 .env
 .env.local
+# Local Pi runtime state
+.atl/
+
+# External checkouts and stale worktrees — NOT part of the TTS Lab source.
+# These inflate pi-lens/LSP diagnostics with upstream third-party code that is
+# not our responsibility to fix. Excluding them keeps src/ and tests/ as the
+# only diagnostic surface for this repo.
+comfyui/
+.worktrees/
