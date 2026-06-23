@@ -239,16 +239,119 @@ class TestQwenTTSClientModelLoading:
         mock_model.generate_voice_clone.return_value = ([audio_array], 24000)
 
         client._model = mock_model
+        mock_torch = Mock()
+        mock_torch.cuda.is_available.return_value = True
 
         profile = VoiceProfile(
             name="test",
             reference_audio_path=str(ref_audio),
             reference_text="Reference text",
         )
-        result = client.clone_voice(profile, "Hello world")
+
+        with patch.dict("sys.modules", {"torch": mock_torch}):
+            result = client.clone_voice(profile, "Hello world")
 
         assert result.sample_rate == 24000
-        mock_model.generate_voice_clone.assert_called_once()
+        mock_torch.manual_seed.assert_called_once_with(42)
+        mock_torch.cuda.manual_seed_all.assert_called_once_with(42)
+        mock_torch.mps.manual_seed.assert_called_once_with(42)
+        mock_model.generate_voice_clone.assert_called_once_with(
+            text="Hello world",
+            language="Spanish",
+            ref_audio=str(ref_audio),
+            ref_text="Reference text",
+            x_vector_only_mode=False,
+            temperature=0.8,
+            top_p=0.95,
+            top_k=50,
+            repetition_penalty=1.1,
+            max_new_tokens=2048,
+        )
+
+    def test_clone_voice_passes_custom_controls(self, sample_audio_data, tmp_path):
+        """clone_voice should pass language, mode, and sampling controls."""
+        import numpy as np
+
+        from tts_lab.domain.entities import VoiceProfile
+        from tts_lab.infrastructure.qwen_client import QwenTTSClient
+
+        client = QwenTTSClient(model_path="test_model")
+        ref_audio = tmp_path / "ref.wav"
+        ref_audio.write_bytes(sample_audio_data)
+
+        mock_model = Mock()
+        audio_array = np.zeros(24000, dtype=np.float32)
+        mock_model.generate_voice_clone.return_value = ([audio_array], 24000)
+        client._model = mock_model
+        mock_torch = Mock()
+        mock_torch.cuda.is_available.return_value = False
+
+        profile = VoiceProfile(
+            name="test",
+            reference_audio_path=str(ref_audio),
+            reference_text="Reference text",
+        )
+
+        with patch.dict("sys.modules", {"torch": mock_torch}):
+            client.clone_voice(
+                profile,
+                "Hola mundo",
+                language="Spanish",
+                x_vector_only_mode=True,
+                seed=123,
+                temperature=0.7,
+                top_p=0.9,
+                top_k=40,
+                repetition_penalty=1.05,
+                max_new_tokens=1024,
+            )
+
+        mock_torch.manual_seed.assert_called_once_with(123)
+        mock_torch.cuda.manual_seed_all.assert_not_called()
+        mock_torch.mps.manual_seed.assert_called_once_with(123)
+        mock_model.generate_voice_clone.assert_called_once_with(
+            text="Hola mundo",
+            language="Spanish",
+            ref_audio=str(ref_audio),
+            ref_text="Reference text",
+            x_vector_only_mode=True,
+            temperature=0.7,
+            top_p=0.9,
+            top_k=40,
+            repetition_penalty=1.05,
+            max_new_tokens=1024,
+        )
+
+    def test_clone_voice_skips_rng_seeding_when_seed_is_none(self, sample_audio_data, tmp_path):
+        """clone_voice should not change RNG state when seed is None."""
+        import numpy as np
+
+        from tts_lab.domain.entities import VoiceProfile
+        from tts_lab.infrastructure.qwen_client import QwenTTSClient
+
+        client = QwenTTSClient(model_path="test_model")
+        ref_audio = tmp_path / "ref.wav"
+        ref_audio.write_bytes(sample_audio_data)
+
+        mock_model = Mock()
+        audio_array = np.zeros(24000, dtype=np.float32)
+        mock_model.generate_voice_clone.return_value = ([audio_array], 24000)
+        client._model = mock_model
+        mock_torch = Mock()
+
+        profile = VoiceProfile(
+            name="test",
+            reference_audio_path=str(ref_audio),
+            reference_text="Reference text",
+        )
+
+        with patch.dict("sys.modules", {"torch": mock_torch}):
+            client.clone_voice(profile, "Hola mundo", seed=None)
+
+        mock_torch.manual_seed.assert_not_called()
+        mock_torch.cuda.manual_seed_all.assert_not_called()
+        mock_torch.mps.manual_seed.assert_not_called()
+        assert "seed" not in mock_model.generate_voice_clone.call_args.kwargs
 
     def test_clone_voice_raises_on_error(self, sample_audio_data, tmp_path):
         """clone_voice should raise TTSError on model error."""

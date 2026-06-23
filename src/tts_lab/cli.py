@@ -4,17 +4,27 @@ Provides command-line interface for voice cloning and speech generation.
 """
 
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from tts_lab.application.dto import GenerateSpeechRequest
+from tts_lab.application.dto import GenerateSpeechRequest, Language
 from tts_lab.application.use_cases import GenerateSpeechUseCase
 from tts_lab.domain.entities import VoiceProfile
 from tts_lab.infrastructure.config import TTSConfig
 from tts_lab.infrastructure.file_storage import FileAudioRepository
-from tts_lab.infrastructure.qwen_client import QwenTTSClient
+from tts_lab.infrastructure.qwen_client import (
+    DEFAULT_CLONE_LANGUAGE,
+    DEFAULT_CLONE_MAX_NEW_TOKENS,
+    DEFAULT_CLONE_REPETITION_PENALTY,
+    DEFAULT_CLONE_SEED,
+    DEFAULT_CLONE_TEMPERATURE,
+    DEFAULT_CLONE_TOP_K,
+    DEFAULT_CLONE_TOP_P,
+    QwenTTSClient,
+)
 
 console = Console()
 
@@ -24,18 +34,55 @@ app = typer.Typer(help="TTS Lab - Voice Cloning Laboratory")
 
 @app.command("clone")
 def clone_voice(
-    reference_audio: Path = typer.Argument(..., help="Path to reference audio file"),
-    reference_text: str = typer.Option(..., "--ref-text", "-r", help="Transcription of reference audio"),
-    text: str = typer.Option(..., "--text", "-t", help="Text to speak with cloned voice"),
-    output: Path = typer.Option(Path("output/cloned.wav"), "--output", "-o", help="Output path"),
-    model_path: str = typer.Option(
-        "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
-        "--model",
-        "-m",
-        help="HuggingFace model ID or local path",
-    ),
-    device: str = typer.Option("mps", "--device", "-d", help="Device (mps, cuda, cpu)"),
-):
+    reference_audio: Annotated[Path, typer.Argument(help="Path to reference audio file")],
+    reference_text: Annotated[str, typer.Option("--ref-text", "-r", help="Transcription of reference audio")],
+    text: Annotated[str, typer.Option("--text", "-t", help="Text to speak with cloned voice")],
+    output: Annotated[Path, typer.Option("--output", "-o", help="Output path")] = Path("output/cloned.wav"),
+    model_path: Annotated[
+        str,
+        typer.Option(
+            "--model",
+            "-m",
+            help="HuggingFace model ID or local path. Clone defaults to the Base model.",
+        ),
+    ] = "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+    device: Annotated[str, typer.Option("--device", "-d", help="Device (mps, cuda, cpu)")] = "mps",
+    language: Annotated[
+        Language,
+        typer.Option(
+            "--language",
+            "-l",
+            help="Target clone language (Spanish, English, Auto)",
+        ),
+    ] = DEFAULT_CLONE_LANGUAGE,
+    embedding_only: Annotated[
+        bool,
+        typer.Option(
+            "--embedding-only",
+            help="Use embedding-only cloning. Default is ICL cloning.",
+        ),
+    ] = False,
+    seed: Annotated[int, typer.Option("--seed", help="Sampling seed")] = DEFAULT_CLONE_SEED,
+    temperature: Annotated[
+        float, typer.Option("--temperature", help="Sampling temperature")
+    ] = DEFAULT_CLONE_TEMPERATURE,
+    top_p: Annotated[float, typer.Option("--top-p", help="Nucleus sampling top-p")] = DEFAULT_CLONE_TOP_P,
+    top_k: Annotated[int, typer.Option("--top-k", help="Top-k sampling")] = DEFAULT_CLONE_TOP_K,
+    repetition_penalty: Annotated[
+        float,
+        typer.Option(
+            "--repetition-penalty",
+            help="Repetition penalty",
+        ),
+    ] = DEFAULT_CLONE_REPETITION_PENALTY,
+    max_new_tokens: Annotated[
+        int,
+        typer.Option(
+            "--max-new-tokens",
+            help="Maximum generated tokens",
+        ),
+    ] = DEFAULT_CLONE_MAX_NEW_TOKENS,
+) -> None:
     """Clone voice from reference audio and generate speech.
 
     Example:
@@ -58,7 +105,18 @@ def clone_voice(
                     reference_text=reference_text,
                 )
 
-                audio = client.clone_voice(profile, text)
+                audio = client.clone_voice(
+                    profile,
+                    text,
+                    language=language,
+                    x_vector_only_mode=embedding_only,
+                    seed=seed,
+                    temperature=temperature,
+                    top_p=top_p,
+                    top_k=top_k,
+                    repetition_penalty=repetition_penalty,
+                    max_new_tokens=max_new_tokens,
+                )
 
                 repo = FileAudioRepository(output_dir=str(output.parent))
                 repo.save(audio, output.name)
@@ -74,23 +132,30 @@ def clone_voice(
 
 @app.command("generate")
 def generate_speech(
-    text: str = typer.Argument(..., help="Text to convert to speech"),
-    output: Path = typer.Option(Path("output/speech.wav"), "--output", "-o", help="Output path"),
-    language: str = typer.Option(
-        "Auto", "--language", "-l", help="Language (Spanish, English, Auto)"
-    ),
-    speaker: str | None = typer.Option(None, "--speaker", "-s", help="Speaker name"),
-    instruct: str | None = typer.Option(
-        None, "--instruct", "-i", help="Voice style instructions"
-    ),
-    model_path: str = typer.Option(
-        "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
-        "--model",
-        "-m",
-        help="HuggingFace model ID or local path",
-    ),
-    device: str = typer.Option("mps", "--device", "-d", help="Device (mps, cuda, cpu)"),
-):
+    text: Annotated[str, typer.Argument(help="Text to convert to speech")],
+    output: Annotated[Path, typer.Option("--output", "-o", help="Output path")] = Path("output/speech.wav"),
+    language: Annotated[
+        Language,
+        typer.Option(
+            "--language",
+            "-l",
+            help="Language (Spanish, English, Auto)",
+        ),
+    ] = "Auto",
+    speaker: Annotated[str | None, typer.Option("--speaker", "-s", help="Speaker name")] = None,
+    instruct: Annotated[
+        str | None, typer.Option("--instruct", "-i", help="Voice style instructions")
+    ] = None,
+    model_path: Annotated[
+        str,
+        typer.Option(
+            "--model",
+            "-m",
+            help="HuggingFace model ID or local path",
+        ),
+    ] = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+    device: Annotated[str, typer.Option("--device", "-d", help="Device (mps, cuda, cpu)")] = "mps",
+) -> None:
     """Generate speech from text using preset voices.
 
     Example:

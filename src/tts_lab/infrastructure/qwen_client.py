@@ -5,12 +5,23 @@ Handles all Qwen TTS side effects including model loading and inference.
 
 import logging
 from pathlib import Path
+from types import TracebackType
+from typing import Any, Literal
 
 from tts_lab.domain.entities import AudioResult, TTSRequest, VoiceProfile
 from tts_lab.domain.exceptions import ModelLoadError, TTSError, VoiceProfileError
 from tts_lab.domain.protocols import TTSClient
 
 logger = logging.getLogger(__name__)
+
+
+DEFAULT_CLONE_LANGUAGE: Literal["Spanish", "English", "Auto"] = "Spanish"
+DEFAULT_CLONE_SEED = 42
+DEFAULT_CLONE_TEMPERATURE = 0.8
+DEFAULT_CLONE_TOP_P = 0.95
+DEFAULT_CLONE_TOP_K = 50
+DEFAULT_CLONE_REPETITION_PENALTY = 1.1
+DEFAULT_CLONE_MAX_NEW_TOKENS = 2048
 
 
 class QwenTTSClient(TTSClient):
@@ -28,7 +39,7 @@ class QwenTTSClient(TTSClient):
         """
         self._model_path = model_path
         self._device = device
-        self._model = None  # Lazy loading
+        self._model: Any = None  # Lazy loading
 
     def _ensure_model_loaded(self) -> None:
         """Lazy load model to save memory.
@@ -43,10 +54,13 @@ class QwenTTSClient(TTSClient):
                 import torch
                 from qwen_tts import Qwen3TTSModel  # type: ignore
 
+                # Pyright false positive: torch.bfloat16 is a dynamic module
+                # attribute not in the stub's public export list, but it is valid
+                # at runtime. Verified with torch 2.x.
                 self._model = Qwen3TTSModel.from_pretrained(
                     self._model_path,
                     device_map=self._device,
-                    dtype=torch.bfloat16,
+                    dtype=torch.bfloat16,  # pyright: ignore[reportPrivateImportUsage]
                 )
             except ImportError as e:
                 raise ModelLoadError(
@@ -69,6 +83,7 @@ class QwenTTSClient(TTSClient):
             TTSError: If generation fails.
         """
         self._ensure_model_loaded()
+        assert self._model is not None
         try:
             wavs, sr = self._model.generate_custom_voice(
                 text=request.text,
@@ -81,12 +96,33 @@ class QwenTTSClient(TTSClient):
             logger.error(f"TTS generation failed: {e}")
             raise TTSError(f"Failed to generate speech: {e}") from e
 
-    def clone_voice(self, profile: VoiceProfile, text: str) -> AudioResult:
+    def clone_voice(
+        self,
+        profile: VoiceProfile,
+        text: str,
+        *,
+        language: str = DEFAULT_CLONE_LANGUAGE,
+        x_vector_only_mode: bool = False,
+        seed: int | None = DEFAULT_CLONE_SEED,
+        temperature: float = DEFAULT_CLONE_TEMPERATURE,
+        top_p: float = DEFAULT_CLONE_TOP_P,
+        top_k: int = DEFAULT_CLONE_TOP_K,
+        repetition_penalty: float = DEFAULT_CLONE_REPETITION_PENALTY,
+        max_new_tokens: int = DEFAULT_CLONE_MAX_NEW_TOKENS,
+    ) -> AudioResult:
         """Clone voice from reference audio.
 
         Args:
             profile: Voice profile with reference audio and text.
             text: Text to speak with cloned voice.
+            language: Target synthesis language. Defaults to Spanish.
+            x_vector_only_mode: Use embedding-only cloning when True; ICL when False.
+            seed: Sampling seed for reproducible cloning. Use None to leave RNG state unchanged.
+            temperature: Sampling temperature.
+            top_p: Nucleus sampling threshold.
+            top_k: Top-k sampling threshold.
+            repetition_penalty: Penalty for repeated tokens.
+            max_new_tokens: Maximum generated tokens.
 
         Returns:
             AudioResult with generated audio data.
@@ -96,18 +132,44 @@ class QwenTTSClient(TTSClient):
             TTSError: If cloning fails.
         """
         self._ensure_model_loaded()
+        assert self._model is not None
         self._validate_voice_profile(profile)
         try:
+            self._seed_generation(seed)
             wavs, sr = self._model.generate_voice_clone(
                 text=text,
-                language="Auto",
+                language=language,
                 ref_audio=profile.reference_audio_path,
                 ref_text=profile.reference_text,
+                x_vector_only_mode=x_vector_only_mode,
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
+                repetition_penalty=repetition_penalty,
+                max_new_tokens=max_new_tokens,
             )
             return self._to_audio_result(wavs[0], sr)
         except Exception as e:
             logger.error(f"Voice cloning failed: {e}")
             raise TTSError(f"Failed to clone voice: {e}") from e
+
+    def _seed_generation(self, seed: int | None) -> None:
+        """Seed PyTorch RNGs before voice cloning generation."""
+        if seed is None:
+            return
+
+        import torch
+
+        torch.manual_seed(seed)
+
+        cuda = getattr(torch, "cuda", None)
+        if cuda is not None and cuda.is_available():
+            cuda.manual_seed_all(seed)
+
+        mps = getattr(torch, "mps", None)
+        mps_manual_seed = getattr(mps, "manual_seed", None)
+        if callable(mps_manual_seed):
+            mps_manual_seed(seed)
 
     def _validate_voice_profile(self, profile: VoiceProfile) -> None:
         """Validate voice profile before cloning.
@@ -124,7 +186,7 @@ class QwenTTSClient(TTSClient):
         if ref_path.suffix.lower() not in [".wav", ".mp3", ".flac"]:
             raise VoiceProfileError(f"Unsupported audio format: {ref_path.suffix}")
 
-    def _to_audio_result(self, wav_array, sample_rate: int) -> AudioResult:
+    def _to_audio_result(self, wav_array: Any, sample_rate: int) -> AudioResult:
         """Convert wav array to AudioResult.
 
         Args:
@@ -151,7 +213,6 @@ class QwenTTSClient(TTSClient):
     def unload(self) -> None:
         """Explicitly unload model to free memory."""
         if self._model is not None:
-            del self._model
             self._model = None
 
             # Clear GPU memory if using CUDA
@@ -169,7 +230,12 @@ class QwenTTSClient(TTSClient):
         """Context manager entry."""
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         """Context manager exit - unload model."""
         self.unload()
 
