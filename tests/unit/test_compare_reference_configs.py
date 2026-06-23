@@ -8,6 +8,7 @@ import json
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import Any, cast
 
 import pytest
 
@@ -17,8 +18,14 @@ SCRIPT_MODULE_NAME = "compare_reference_configs_for_tests"
 
 def _load_script_module() -> ModuleType:
     cached_module = sys.modules.get(SCRIPT_MODULE_NAME)
-    if isinstance(cached_module, ModuleType):
+    if isinstance(cached_module, ModuleType) and hasattr(cached_module, "_load_bundle"):
         return cached_module
+
+    soundfile_module = cast(Any, sys.modules.setdefault("soundfile", ModuleType("soundfile")))
+    soundfile_module.write = lambda *args, **kwargs: None
+
+    qwen_module = cast(Any, sys.modules.setdefault("qwen_tts", ModuleType("qwen_tts")))
+    qwen_module.Qwen3TTSModel = object
 
     spec = importlib.util.spec_from_file_location(SCRIPT_MODULE_NAME, SCRIPT_PATH)
     if spec is None or spec.loader is None:
@@ -55,10 +62,9 @@ def bundle_payload(tmp_path: Path) -> dict[str, object]:
     }
 
 
-def _write_bundle(tmp_path: Path, payload: dict[str, object]) -> Path:
-    bundle_path = tmp_path / "bundle.json"
-    bundle_path.write_text(json.dumps(payload), encoding="utf-8")
-    return bundle_path
+def _write_bundle(path: Path, payload: dict[str, object]) -> Path:
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
 
 
 def test_load_bundle_rejects_non_boolean_transcription_validated(
@@ -68,9 +74,48 @@ def test_load_bundle_rejects_non_boolean_transcription_validated(
 ) -> None:
     payload = dict(bundle_payload)
     payload["transcription_validated"] = "false"
-    bundle_path = _write_bundle(tmp_path, payload)
+    bundle_path = _write_bundle(tmp_path / "bundle.json", payload)
 
     with pytest.raises(SystemExit, match="transcription_validated"):
+        script_module._load_bundle(bundle_path)
+
+
+def test_load_bundle_rejects_non_string_speaker(
+    script_module: ModuleType,
+    tmp_path: Path,
+    bundle_payload: dict[str, object],
+) -> None:
+    payload = dict(bundle_payload)
+    payload["speaker"] = 123
+    bundle_path = _write_bundle(tmp_path / "bundle.json", payload)
+
+    with pytest.raises(SystemExit, match="speaker"):
+        script_module._load_bundle(bundle_path)
+
+
+def test_load_bundle_rejects_non_numeric_score(
+    script_module: ModuleType,
+    tmp_path: Path,
+    bundle_payload: dict[str, object],
+) -> None:
+    payload = dict(bundle_payload)
+    payload["score"] = "0.72"
+    bundle_path = _write_bundle(tmp_path / "bundle.json", payload)
+
+    with pytest.raises(SystemExit, match="score"):
+        script_module._load_bundle(bundle_path)
+
+
+def test_load_bundle_rejects_non_list_warnings(
+    script_module: ModuleType,
+    tmp_path: Path,
+    bundle_payload: dict[str, object],
+) -> None:
+    payload = dict(bundle_payload)
+    payload["warnings"] = "oops"
+    bundle_path = _write_bundle(tmp_path / "bundle.json", payload)
+
+    with pytest.raises(SystemExit, match="warnings"):
         script_module._load_bundle(bundle_path)
 
 
@@ -81,7 +126,7 @@ def test_load_bundle_rejects_missing_segment_path(
 ) -> None:
     payload = dict(bundle_payload)
     payload["segment_path"] = str(tmp_path / "missing-segment.wav")
-    bundle_path = _write_bundle(tmp_path, payload)
+    bundle_path = _write_bundle(tmp_path / "bundle.json", payload)
 
     with pytest.raises(SystemExit, match="segment_path"):
         script_module._load_bundle(bundle_path)
@@ -94,15 +139,23 @@ def test_load_bundle_rejects_missing_source_audio_path(
 ) -> None:
     payload = dict(bundle_payload)
     payload["source_audio_path"] = str(tmp_path / "missing-source.wav")
-    bundle_path = _write_bundle(tmp_path, payload)
+    bundle_path = _write_bundle(tmp_path / "bundle.json", payload)
 
     with pytest.raises(SystemExit, match="source_audio_path"):
         script_module._load_bundle(bundle_path)
 
 
 class _FakeModel:
-    def __init__(self, *, fail_embedding: bool) -> None:
+    def __init__(
+        self,
+        *,
+        fail_embedding: bool,
+        empty_audio: bool = False,
+        sample_rate: int = 3,
+    ) -> None:
         self.fail_embedding = fail_embedding
+        self.empty_audio = empty_audio
+        self.sample_rate = sample_rate
 
     def create_voice_clone_prompt(
         self,
@@ -127,7 +180,59 @@ class _FakeModel:
         del target_text, language
         if self.fail_embedding and bool(voice_clone_prompt["x_vector_only_mode"]):
             raise RuntimeError("embedding generation failed")
-        return ([[0.1, 0.2, 0.3]], 3)
+        if self.empty_audio:
+            return ([], self.sample_rate)
+        return ([[0.1, 0.2, 0.3]], self.sample_rate)
+
+
+def test_run_case_marks_empty_audio_as_failed(
+    script_module: ModuleType,
+    tmp_path: Path,
+    bundle_payload: dict[str, object],
+) -> None:
+    bundle_path = _write_bundle(tmp_path / "bundle.json", bundle_payload)
+    bundle = script_module._load_bundle(bundle_path)
+    case = script_module.build_default_cases(
+        bundle,
+        bundle_path=str(bundle_path),
+        target_text="hola",
+        text_label="neutral",
+    )[0]
+
+    result = script_module._run_case(
+        model=_FakeModel(fail_embedding=False, empty_audio=True),
+        case=case,
+        bundle=bundle,
+        output_dir=tmp_path,
+    )
+
+    assert result.status == "failed"
+    assert result.error_message == "ValueError: Model returned empty audio"
+
+
+def test_run_case_marks_non_positive_sample_rate_as_failed(
+    script_module: ModuleType,
+    tmp_path: Path,
+    bundle_payload: dict[str, object],
+) -> None:
+    bundle_path = _write_bundle(tmp_path / "bundle.json", bundle_payload)
+    bundle = script_module._load_bundle(bundle_path)
+    case = script_module.build_default_cases(
+        bundle,
+        bundle_path=str(bundle_path),
+        target_text="hola",
+        text_label="neutral",
+    )[0]
+
+    result = script_module._run_case(
+        model=_FakeModel(fail_embedding=False, sample_rate=0),
+        case=case,
+        bundle=bundle,
+        output_dir=tmp_path,
+    )
+
+    assert result.status == "failed"
+    assert result.error_message == "ValueError: Model returned a non-positive sample rate"
 
 
 def test_main_writes_manifest_and_exits_non_zero_on_partial_failure(
@@ -136,7 +241,7 @@ def test_main_writes_manifest_and_exits_non_zero_on_partial_failure(
     tmp_path: Path,
     bundle_payload: dict[str, object],
 ) -> None:
-    bundle_path = _write_bundle(tmp_path, bundle_payload)
+    bundle_path = _write_bundle(tmp_path / "bundle.json", bundle_payload)
     output_dir = tmp_path / "output"
 
     args = argparse.Namespace(
@@ -169,7 +274,7 @@ def test_main_writes_manifest_and_exits_non_zero_on_partial_failure(
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
     assert [case["status"] for case in manifest["cases"]] == ["success", "failed"]
-    assert manifest["cases"][1]["error_message"] == "embedding generation failed"
+    assert manifest["cases"][1]["error_message"] == "RuntimeError: embedding generation failed"
     assert manifest["cases"][0]["case"]["bundle_path"] == str(bundle_path.resolve())
 
 
@@ -179,7 +284,7 @@ def test_main_succeeds_when_all_cases_succeed(
     tmp_path: Path,
     bundle_payload: dict[str, object],
 ) -> None:
-    bundle_path = _write_bundle(tmp_path, bundle_payload)
+    bundle_path = _write_bundle(tmp_path / "bundle.json", bundle_payload)
     output_dir = tmp_path / "output"
 
     args = argparse.Namespace(

@@ -11,9 +11,9 @@ from tts_lab.infrastructure.comparison_manifest import (
 from tts_lab.infrastructure.reference_bundle import ReferenceBundle
 
 
-def _bundle() -> ReferenceBundle:
+def _bundle(*, speaker: str = "felipe") -> ReferenceBundle:
     return ReferenceBundle(
-        speaker="felipe",
+        speaker=speaker,
         segment_path="/tmp/pitch_seg1.wav",
         source_audio_path="/tmp/source.wav",
         reference_text="Hola, esta es mi referencia.",
@@ -27,15 +27,15 @@ def _bundle() -> ReferenceBundle:
     )
 
 
-def _bundle_json_path() -> str:
-    return "/tmp/bundle.json"
+def _bundle_json_path(name: str = "bundle") -> str:
+    return f"/tmp/{name}.json"
 
 
-def test_slugify_produces_stable_case_id():
+def test_slugify_produces_stable_case_id() -> None:
     assert slugify("Text 1 / Neutral") == "text-1-neutral"
 
 
-def test_build_default_cases_returns_small_matrix():
+def test_build_default_cases_returns_small_matrix() -> None:
     bundle = _bundle()
     cases = build_default_cases(
         bundle,
@@ -51,7 +51,26 @@ def test_build_default_cases_returns_small_matrix():
     assert all(case.bundle_path == _bundle_json_path() for case in cases)
 
 
-def test_build_manifest_serializes_cases():
+def test_build_default_cases_uses_bundle_path_to_avoid_case_id_collisions() -> None:
+    bundle = _bundle(speaker="shared-speaker")
+    first_cases = build_default_cases(
+        bundle,
+        bundle_path=_bundle_json_path("first-bundle"),
+        target_text="hola",
+        text_label="neutral",
+    )
+    second_cases = build_default_cases(
+        bundle,
+        bundle_path=_bundle_json_path("second-bundle"),
+        target_text="hola",
+        text_label="neutral",
+    )
+
+    assert first_cases[0].case_id != second_cases[0].case_id
+    assert first_cases[1].case_id != second_cases[1].case_id
+
+
+def test_build_manifest_serializes_cases() -> None:
     bundle = _bundle()
     case = build_default_cases(
         bundle,

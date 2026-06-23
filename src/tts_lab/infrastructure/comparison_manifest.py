@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -51,6 +52,13 @@ def slugify(value: str) -> str:
     return lowered or "case"
 
 
+def build_case_prefix(bundle: ReferenceBundle, *, bundle_path: str) -> str:
+    """Build a stable, human-readable prefix for comparison case ids."""
+    bundle_slug = slugify(Path(bundle.segment_path).stem)
+    bundle_hash = hashlib.sha1(bundle_path.encode("utf-8")).hexdigest()[:8]
+    return f"{bundle_slug}-{bundle_hash}"
+
+
 def build_default_cases(
     bundle: ReferenceBundle,
     *,
@@ -59,11 +67,11 @@ def build_default_cases(
     text_label: str,
 ) -> list[ComparisonCase]:
     """Build the default small comparison matrix for one bundle."""
-    bundle_slug = slugify(Path(bundle.segment_path).stem)
+    case_prefix = build_case_prefix(bundle, bundle_path=bundle_path)
     warnings = bundle.warnings
     base = [
         ComparisonCase(
-            case_id=f"{bundle_slug}-auto-icl",
+            case_id=f"{case_prefix}-auto-icl",
             bundle_path=bundle_path,
             segment_path=bundle.segment_path,
             text_label=text_label,
@@ -74,7 +82,7 @@ def build_default_cases(
             warnings=warnings,
         ),
         ComparisonCase(
-            case_id=f"{bundle_slug}-auto-embedding",
+            case_id=f"{case_prefix}-auto-embedding",
             bundle_path=bundle_path,
             segment_path=bundle.segment_path,
             text_label=text_label,
