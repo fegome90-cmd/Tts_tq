@@ -8,7 +8,6 @@ import json
 import sys
 from pathlib import Path
 from types import ModuleType
-from typing import Any, cast
 
 import pytest
 
@@ -16,29 +15,35 @@ SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "compare_referen
 SCRIPT_MODULE_NAME = "compare_reference_configs_for_tests"
 
 
-def _load_script_module() -> ModuleType:
-    cached_module = sys.modules.get(SCRIPT_MODULE_NAME)
-    if isinstance(cached_module, ModuleType) and hasattr(cached_module, "_load_bundle"):
-        return cached_module
+def _load_script_module(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
+    """Load scripts/compare_reference_configs.py with stubbed heavy deps.
 
-    soundfile_module = cast(Any, sys.modules.setdefault("soundfile", ModuleType("soundfile")))
-    soundfile_module.write = lambda *args, **kwargs: None
+    The stubs (soundfile, qwen_tts) are injected via monkeypatch so pytest
+    restores sys.modules automatically after the test. Without this, the fake
+    modules leak into sys.modules and break later tests that import the real
+    soundfile/qwen_tts (e.g. test_file_storage, test_qwen_client).
+    """
+    soundfile_module = ModuleType("soundfile")
+    soundfile_module.write = lambda *args, **kwargs: None  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "soundfile", soundfile_module)
 
-    qwen_module = cast(Any, sys.modules.setdefault("qwen_tts", ModuleType("qwen_tts")))
-    qwen_module.Qwen3TTSModel = object
+    qwen_module = ModuleType("qwen_tts")
+    qwen_module.Qwen3TTSModel = object  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "qwen_tts", qwen_module)
 
     spec = importlib.util.spec_from_file_location(SCRIPT_MODULE_NAME, SCRIPT_PATH)
     if spec is None or spec.loader is None:
         raise AssertionError("Unable to load compare_reference_configs.py")
     module = importlib.util.module_from_spec(spec)
-    sys.modules[SCRIPT_MODULE_NAME] = module
+    # Cache under a test-only name so re-imports inside the script resolve.
+    monkeypatch.setitem(sys.modules, SCRIPT_MODULE_NAME, module)
     spec.loader.exec_module(module)
     return module
 
 
 @pytest.fixture
-def script_module() -> ModuleType:
-    return _load_script_module()
+def script_module(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
+    return _load_script_module(monkeypatch)
 
 
 @pytest.fixture
