@@ -2,9 +2,9 @@
 
 > **Fecha:** 2026-06-23
 > **Sesión:** TTS Lab voice cloning research — Qwen3-TTS, XTTS-v2, ElevenLabs
-> **Objetivo:** Clonar voz de Felipe González (chileno) y evaluar preservación de acento chileno
+> **Objetivo:** Clonar voz del hablante objetivo (chileno) y evaluar preservación de acento chileno
 > **Método:** Autoresearch loop (baseline → hipótesis → experimento → validación → loop)
-> **Evaluador humano:** Felipe González (hablante nativo chileno)
+> **Evaluador humano:** hablante objetivo (hablante nativo chileno)
 
 ---
 
@@ -154,7 +154,7 @@ max_new_tokens = 512       # cap razonable
 
 ### O-2a: Verificar preservación de identidad de speaker (Qwen3-TTS)
 
-**Hipótesis:** Los outputs COHERENT de O-1 preservan la identidad de Felipe.
+**Hipótesis:** Los outputs COHERENT de O-1 preservan la identidad del hablante objetivo.
 
 - **Métrica:** ECAPA cosine similarity (threshold ≥ 0.75 = same speaker)
 - **Calibración:** self=1.0000, negative control (voice_designed)=0.0600
@@ -169,7 +169,7 @@ max_new_tokens = 512       # cap razonable
 
 **Interpretación:** Qwen3-TTS-Base genera habla coherente pero NO transfiere el timbre del speaker. El "clone" es solo fonética, no clonación de timbre.
 
-**Nota crítica descubierta después:** `reference_v2_fixed.wav` NO era la voz de Felipe (cosine 0.41 vs pitch real confirmado por ECAPA). Las mediciones de O-2a eran engañosas. Re-medición con referencia correcta (`pitch_segment_15s_fixed.wav`) más adelante.
+**Nota crítica descubierta después:** `reference_v2_fixed.wav` NO era la voz del hablante objetivo (cosine 0.41 vs pitch real confirmado por ECAPA). Las mediciones de O-2a eran engañosas. Re-medición con referencia correcta (`pitch_segment_15s_fixed.wav`) más adelante.
 
 ---
 
@@ -190,17 +190,17 @@ max_new_tokens = 512       # cap razonable
 
 ---
 
-### O-3b: XTTS-v2 spike (clonación zero-shot de Felipe)
+### O-3b: XTTS-v2 spike (clonación zero-shot del hablante objetivo)
 
 **Hipótesis:** XTTS-v2 produce cosine ≥ 0.60 (mejora clara sobre Qwen3 baseline 0.1-0.2).
 
-| Output | Cosine vs Felipe (xtts_ref_optimal) | Inferencia | Duración |
+| Output | Cosine vs hablante objetivo (xtts_ref_optimal) | Inferencia | Duración |
 |--------|--------------------------------------|------------|----------|
 | xtts_v2_zero_shot | 0.5550 | 8.9s | 5.74s |
 
 **Resultado: PARTIAL-PASS ✅** — cosine 0.555, mejora 2.7× sobre Qwen3, pero debajo del threshold same-speaker (0.75).
 
-**Evaluación humana (Felipe):** "Suena parecido, con acento neutro, tiene artifacts al final."
+**Evaluación humana (hablante objetivo):** "Suena parecido, con acento neutro, tiene artifacts al final."
 
 ---
 
@@ -214,14 +214,14 @@ max_new_tokens = 512       # cap razonable
 
 #### Referencia correcta (pitch_segment_15s_fixed.wav)
 
-**Descubrimiento crítico:** `reference_v2_fixed.wav` NO era la voz de Felipe. ECAPA cross-reference:
+**Descubrimiento crítico:** `reference_v2_fixed.wav` NO era la voz del hablante objetivo. ECAPA cross-reference:
 
 - `xtts_ref_optimal` vs `pitch_segment_15s_fixed`: **0.96** (mismo speaker ✅)
 - `xtts_ref_optimal` vs `reference_v2_fixed`: **0.41** (diferente ❌)
 
 Re-medición con referencia correcta:
 
-| Output | Cosine vs Felipe (pitch15s) | Verdict |
+| Output | Cosine vs hablante objetivo (pitch15s) | Verdict |
 |--------|-----------------------------|---------|
 | qwen3_h1a | 0.2532 | DIFFERENT |
 | qwen3_h2 | 0.0140 | DIFFERENT |
@@ -229,9 +229,9 @@ Re-medición con referencia correcta:
 | **xtts_v2 (pitch15s)** | **0.5797** | **CLOSE** |
 | xtts_v2 (multi-ref) | 0.5367 | DIFFERENT |
 
-**Evaluación humana (Felipe):** pitch_segment_15s_fixed.wav suena a **español ibérico, no chileno**.
+**Evaluación humana (hablante objetivo):** pitch_segment_15s_fixed.wav suena a **español ibérico, no chileno**.
 
-**Root cause del acento neutro:** `pitch_segment_15s_fixed.wav` ES la voz real de Felipe (cross-correlation 0.86 con pitch_full.wav, recorte del segundo 2.6-18.1). El "sonar ibérico" es porque el **registro formal del pitch académico** atenúa las marcas fonéticas chilenas (aspiración de /s/, elisión de /d/, asibilación de /tɾ/).
+**Root cause del acento neutro:** `pitch_segment_15s_fixed.wav` ES la voz real del hablante objetivo (cross-correlation 0.86 con pitch_full.wav, recorte del segundo 2.6-18.1). El "sonar ibérico" es porque el **registro formal del pitch académico** atenúa las marcas fonéticas chilenas (aspiración de /s/, elisión de /d/, asibilación de /tɾ/).
 
 ---
 
@@ -240,31 +240,31 @@ Re-medición con referencia correcta:
 **Hipótesis:** XTTS-v2 transfiere acento chileno cuando la referencia lo tiene marcado.
 
 - **Referencia:** Speaker 9697 de `ylacombe/google-chilean-spanish` (48 samples, coloquial chileno nativo)
-- **Target 1:** "Hola, soy Felipe. Esta es una prueba corta..."
+- **Target 1:** "Hola. Esta es una prueba corta..."
 - **Target 2:** "Si quieres ahorrar dinero en el supermarket, te recomiendo ir al tiro porque es más barato."
 
-| Output | Cosine vs 9697 | Cosine vs Felipe |
+| Output | Cosine vs 9697 | Cosine vs hablante objetivo |
 |--------|----------------|------------------|
 | 9697_target1 (formal) | **0.6649** | 0.2317 |
 | 9697_target2 (coloquial) | **0.6568** | — |
 
-**Evaluación humana (Felipe): "Suena a chileno 100%" ✅**
+**Evaluación humana (hablante objetivo): "Suena a chileno 100%" ✅**
 
 **Resultado: PASS ✅** — XTTS-v2 SÍ transfiere el acento chileno desde una referencia que lo tiene.
 
 ---
 
-### O-3e: MIX multi-ref (Felipe timbre + 9697 acento)
+### O-3e: MIX multi-ref (hablante objetivo timbre + 9697 acento)
 
-**Hipótesis:** XTTS-v2 multi-ref mezcla timbre de Felipe + acento chileno del 9697.
+**Hipótesis:** XTTS-v2 multi-ref mezcla timbre del hablante objetivo + acento chileno del 9697.
 
-- **speaker_wav:** 3 archivos (1 Felipe + 2 Speaker 9697)
+- **speaker_wav:** 3 archivos (1 hablante objetivo + 2 Speaker 9697)
 
-| Output | Cosine vs Felipe | Cosine vs 9697 |
+| Output | Cosine vs hablante objetivo | Cosine vs 9697 |
 |--------|------------------|----------------|
 | MIX | 0.3715 | 0.4246 |
 
-**Evaluación humana (Felipe): "Mala calidad" ❌**
+**Evaluación humana (hablante objetivo): "Mala calidad" ❌**
 
 **Resultado: FAIL 🔴** — XTTS-v2 promedia embeddings, no separa timbre de acento. El híbrido degrada ambos.
 
@@ -272,16 +272,16 @@ Re-medición con referencia correcta:
 
 ### O-3f: OpenVoice voice conversion (desacoplar timbre de acento)
 
-**Hipótesis:** OpenVoice VC transfiere timbre de Felipe al audio con acento chileno del 9697.
+**Hipótesis:** OpenVoice VC transfiere timbre del hablante objetivo al audio con acento chileno del 9697.
 
-- **Pipeline:** XTTS-v2 (9697) → OpenVoice VC (target=Felipe)
+- **Pipeline:** XTTS-v2 (9697) → OpenVoice VC (target=hablante objetivo)
 - **Modelo:** `voice_conversion_models/multilingual/multi-dataset/openvoice_v2`
 
-| Output | Cosine vs Felipe | Cosine vs 9697 |
+| Output | Cosine vs hablante objetivo | Cosine vs 9697 |
 |--------|------------------|----------------|
 | OpenVoice | 0.4219 | 0.1889 |
 
-**Evaluación humana (Felipe): "Suena robótico, tiene pausas y vocales extendidas" ❌**
+**Evaluación humana (hablante objetivo): "Suena robótico, tiene pausas y vocales extendidas" ❌**
 
 **Resultado: FAIL 🔴** — Doble pipeline (XTTS → OpenVoice) acumula artefactos sintéticos.
 
@@ -289,24 +289,24 @@ Re-medición con referencia correcta:
 
 ### O-4-EL: ElevenLabs (API cloud)
 
-#### ElevenLabs Multilingual v2 + Felipe
+#### ElevenLabs Multilingual v2 + hablante objetivo
 
 - **Modelo:** `eleven_multilingual_v2`
 - **Inferencia:** 1.6s
-- **Cosine vs Felipe:** 0.5209
-- **Evaluación humana (Felipe):** "Tiene uso de la 'z' como el español ibérico" (zeseo/distinción)
+- **Cosine vs hablante objetivo:** 0.5209
+- **Evaluación humana (hablante objetivo):** "Tiene uso de la 'z' como el español ibérico" (zeseo/distinción)
 
-#### ElevenLabs v3 + Felipe
+#### ElevenLabs v3 + hablante objetivo
 
 - **Modelo:** `eleven_v3` (70+ lenguajes, más expresivo)
 - **Inferencia:** 2.9s
-- **Evaluación humana (Felipe):** "Sigue zeseando"
+- **Evaluación humana (hablante objetivo):** "Sigue zeseando"
 
 #### ElevenLabs v3 + Speaker 9697 (chileno nativo)
 
 - **Modelo:** `eleven_v3`
 - **Referencia:** Speaker 9697 (chileno coloquial)
-- **Evaluación humana (Felipe):** "Incluso ahí le cambia el acento a uno más neutro, pierde el chileno"
+- **Evaluación humana (hablante objetivo):** "Incluso ahí le cambia el acento a uno más neutro, pierde el chileno"
 
 **Resultado: FAIL 🔴 para acento chileno** — ElevenLabs impone su propio G2P que neutraliza acentos regionales. No se puede overridear con voice cloning ni con referencia chilena nativa. El modelo "suaviza" la fonética hacia español genérico.
 
@@ -317,13 +317,13 @@ Re-medición con referencia correcta:
 | Modelo | Referencia | Acento chileno | Zeseo ibérico | Timbre clonado | Cosine ECAPA | Inferencia | Veredicto |
 |--------|-----------|----------------|---------------|----------------|--------------|------------|-----------|
 | **XTTS-v2** | Speaker 9697 | ✅ **100% chileno** | ❌ no zesea | ✅ 9697 (0.67) | 0.66 | 5.3s | **🏆 GANADOR** |
-| **XTTS-v2** | Felipe pitch | ❌ neutro | ❌ no zesea | ✅ Felipe (0.58) | 0.58 | 8.9s | Timbre OK, acento falla |
-| ElevenLabs v2 | Felipe | ❌ ibérico | ✅ **sí zesea** | ✅ Felipe (0.52) | 0.52 | 1.6s | Zeseo ibérico |
-| ElevenLabs v3 | Felipe | ❌ neutro | ✅ sí zesea | ✅ Felipe | — | 2.9s | Zeseo + neutro |
+| **XTTS-v2** | hablante objetivo pitch | ❌ neutro | ❌ no zesea | ✅ hablante objetivo (0.58) | 0.58 | 8.9s | Timbre OK, acento falla |
+| ElevenLabs v2 | hablante objetivo | ❌ ibérico | ✅ **sí zesea** | ✅ hablante objetivo (0.52) | 0.52 | 1.6s | Zeseo ibérico |
+| ElevenLabs v3 | hablante objetivo | ❌ neutro | ✅ sí zesea | ✅ hablante objetivo | — | 2.9s | Zeseo + neutro |
 | ElevenLabs v3 | Speaker 9697 | ❌ neutro | ❌ pierde chileno | ✅ 9697 | — | 2.9s | Neutraliza acento |
-| Qwen3-TTS h2 | Felipe | ❌ neutro | ❌ | ❌ no clona (-0.01) | 0.01 | 10.8s | No clona timbre |
-| XTTS-v2 MIX | Felipe+9697 | ❌ neutro | ❌ | ❌ híbrido (0.37) | 0.37 | 5.9s | Calidad degradada |
-| OpenVoice | 9697→Felipe | ❌ no se sabe | ❌ | ❌ robótico (0.42) | 0.42 | 0.6s | Artifacts dobles |
+| Qwen3-TTS h2 | hablante objetivo | ❌ neutro | ❌ | ❌ no clona (-0.01) | 0.01 | 10.8s | No clona timbre |
+| XTTS-v2 MIX | hablante objetivo+9697 | ❌ neutro | ❌ | ❌ híbrido (0.37) | 0.37 | 5.9s | Calidad degradada |
+| OpenVoice | 9697→hablante objetivo | ❌ no se sabe | ❌ | ❌ robótico (0.42) | 0.42 | 0.6s | Artifacts dobles |
 
 ---
 
@@ -337,30 +337,30 @@ Re-medición con referencia correcta:
 | Negative control (voice_designed vs reference) | 0.0600-0.0963 |
 | Threshold same-speaker (literatura ECAPA-VoxCeleb) | ≥ 0.75 |
 
-### Cross-reference entre audios de Felipe
+### Cross-reference entre audios de hablante objetivo
 
 | Par | Cosine | Interpretación |
 |-----|--------|----------------|
-| xtts_ref_optimal vs pitch_segment_15s_fixed | **0.96** | Mismo speaker (Felipe) ✅ |
+| xtts_ref_optimal vs pitch_segment_15s_fixed | **0.96** | Mismo speaker (hablante objetivo) ✅ |
 | xtts_ref_optimal vs reference_v2_fixed | 0.41 | Diferente speaker ❌ |
 | pitch_segment_15s_fixed vs reference_v2_fixed | 0.42 | Diferente speaker ❌ |
 
-**Hallazgo:** `reference_v2_fixed.wav` no es la voz de Felipe. Las mediciones iniciales que la usaban como baseline eran engañosas.
+**Hallazgo:** `reference_v2_fixed.wav` no es la voz del hablante objetivo. Las mediciones iniciales que la usaban como baseline eran engañosas.
 
 ---
 
-## Veredictos Humanos (Felipe González)
+## Veredictos Humanos (hablante objetivo)
 
-| Experimento | Archivo | Veredicto de Felipe |
+| Experimento | Archivo | Veredicto de hablante objetivo |
 |-------------|---------|-------------------|
-| XTTS-v2 + Felipe pitch formal | clone_xtts_v2.wav | "Suena parecido, con acento neutro, tiene artifacts al final" |
-| XTTS-v2 + Felipe pitch (pitch15s) | clone_xtts_v2_pitch15s.wav | "Esta suena a español ibérico, no a chileno" |
+| XTTS-v2 + hablante objetivo pitch formal | clone_xtts_v2.wav | "Suena parecido, con acento neutro, tiene artifacts al final" |
+| XTTS-v2 + hablante objetivo pitch (pitch15s) | clone_xtts_v2_pitch15s.wav | "Esta suena a español ibérico, no a chileno" |
 | XTTS-v2 + Speaker 9697 | clone_xtts_9697_target1.wav | **"Suena a chileno 100%"** |
 | XTTS-v2 + Speaker 9697 (coloquial) | clone_xtts_9697_target2.wav | **"Suena a chileno 100%"** |
-| XTTS-v2 MIX (Felipe+9697) | clone_xtts_felipe_plus_9697_mix.wav | "Mala calidad" |
-| OpenVoice VC | clone_openvoice_felipe_accent9697.wav | "Suena robótico, tiene pausas y vocales extendidas" |
-| ElevenLabs v2 + Felipe | clone_elevenlabs_felipe.wav | "Tiene uso de la 'z' como el español ibérico" |
-| ElevenLabs v3 + Felipe | clone_elevenlabs_v3_felipe.wav | "Sigue zeseando" |
+| XTTS-v2 MIX (hablante objetivo+9697) | clone_xtts_target_plus_9697_mix.wav | "Mala calidad" |
+| OpenVoice VC | clone_openvoice_target_accent9697.wav | "Suena robótico, tiene pausas y vocales extendidas" |
+| ElevenLabs v2 + hablante objetivo | clone_elevenlabs_target.wav | "Tiene uso de la 'z' como el español ibérico" |
+| ElevenLabs v3 + hablante objetivo | clone_elevenlabs_v3_target.wav | "Sigue zeseando" |
 | ElevenLabs v3 + Speaker 9697 | clone_elevenlabs_v3_9697.wav | "Incluso ahí le cambia el acento a uno más neutro, pierde el chileno" |
 
 ---
@@ -423,7 +423,7 @@ OpenVoice VC degrada calidad cuando el source ya es audio sintético (XTTS-v2 ou
 
 ## Documentos de Referencia
 
-- **Análisis de arquitecturas TTS para acento chileno:** `/Users/felipe_gonzalez/Developer/tqt_app/docs/wiki/references/clonacion-voz-acento-chileno.md`
+- **Análisis de arquitecturas TTS para acento chileno:** `nota privada no incluida en el repositorio`
   - Requiere 3 capas para acento chileno perfecto: G2P + corpora + LoRA
   - COSCACH (1,383h) como gold standard
   - Hiperparámetros LoRA Qwen3: LR=2e-6, cp_lr=0, stop epoch 10-12, lora_scale=0.25-0.35
@@ -452,27 +452,27 @@ tts.tts_to_file(
 
 | Archivo | Modelo | Referencia | Descripción |
 |---------|--------|-----------|-------------|
-| clone_h1a_ref_text_real.wav | Qwen3-TTS | Felipe (ref_text exacto) | O-1 H1a: ref_text fidelity |
-| clone_h1b_trim_only.wav | Qwen3-TTS | Felipe (ref 5s) | O-1 H1b: trimming |
-| clone_h2_embedding.wav | Qwen3-TTS | Felipe (embedding mode) | O-1 H2: embedding mode |
-| clone_xtts_v2.wav | XTTS-v2 | Felipe (ref_optimal) | O-3b: spike inicial |
-| clone_xtts_v2_pitch15s.wav | XTTS-v2 | Felipe (pitch15s) | O-3c: ref correcta |
-| clone_xtts_v2_optimized.wav | XTTS-v2 | Felipe multi-ref | O-3c: multi-ref + low temp |
+| clone_h1a_ref_text_real.wav | Qwen3-TTS | hablante objetivo (ref_text exacto) | O-1 H1a: ref_text fidelity |
+| clone_h1b_trim_only.wav | Qwen3-TTS | hablante objetivo (ref 5s) | O-1 H1b: trimming |
+| clone_h2_embedding.wav | Qwen3-TTS | hablante objetivo (embedding mode) | O-1 H2: embedding mode |
+| clone_xtts_v2.wav | XTTS-v2 | hablante objetivo (ref_optimal) | O-3b: spike inicial |
+| clone_xtts_v2_pitch15s.wav | XTTS-v2 | hablante objetivo (pitch15s) | O-3c: ref correcta |
+| clone_xtts_v2_optimized.wav | XTTS-v2 | hablante objetivo multi-ref | O-3c: multi-ref + low temp |
 | clone_xtts_9697_target1.wav | XTTS-v2 | Speaker 9697 | **O-3d: chileno 100%** |
 | clone_xtts_9697_target2.wav | XTTS-v2 | Speaker 9697 | O-3d: texto coloquial |
-| clone_xtts_felipe_plus_9697_mix.wav | XTTS-v2 | Felipe+9697 | O-3e: MIX (mala calidad) |
-| clone_openvoice_felipe_accent9697.wav | OpenVoice | 9697→Felipe | O-3f: VC robótico |
-| clone_elevenlabs_felipe.wav | ElevenLabs v2 | Felipe | O-4-EL: zeseo ibérico |
-| clone_elevenlabs_v3_felipe.wav | ElevenLabs v3 | Felipe | O-4-EL: sigue zeseando |
+| clone_xtts_target_plus_9697_mix.wav | XTTS-v2 | hablante objetivo+9697 | O-3e: MIX (mala calidad) |
+| clone_openvoice_target_accent9697.wav | OpenVoice | 9697→hablante objetivo | O-3f: VC robótico |
+| clone_elevenlabs_target.wav | ElevenLabs v2 | hablante objetivo | O-4-EL: zeseo ibérico |
+| clone_elevenlabs_v3_target.wav | ElevenLabs v3 | hablante objetivo | O-4-EL: sigue zeseando |
 | clone_elevenlabs_v3_9697.wav | ElevenLabs v3 | Speaker 9697 | O-4-EL: pierde chileno |
 
-### Referencias de audio (`voice_profiles/felipe/`)
+### Referencias de audio (`voice_profiles/target-speaker/`)
 
 | Archivo | Duración | Descripción |
 |---------|----------|-------------|
-| pitch_from_email.mp3 | 262s | Pitch completo original (estéreo 44100Hz) |
+| source_recording.mp3 | 262s | Pitch completo original (estéreo 44100Hz) |
 | pitch_full.wav | 262s | Pitch completo (mono 24000Hz) |
-| pitch_segment_15s_fixed.wav | 15.5s | Segmento 2.6-18.1s del pitch (tu voz real) |
+| pitch_segment_15s_fixed.wav | 15.5s | Segmento 2.6-18.1s del pitch (voz real del hablante objetivo) |
 | xtts_ref_optimal.wav | 11s | Primeros 11s en formato XTTS-v2 (mono 22050Hz 16-bit) |
 | chilean_refs/speaker_9697_ref_1.wav | 7.9s | Speaker 9697 sample 1 (48kHz) |
 | chilean_refs/speaker_9697_ref_2.wav | 7.8s | Speaker 9697 sample 2 |
@@ -497,7 +497,7 @@ tts.tts_to_file(
 
 ### Inmediato (zero additional cost)
 
-1. **Grabar voz coloquial chilena de Felipe** (10-15s, hablando natural con modismos) → usar como `speaker_wav` en XTTS-v2 → obtener Felipe + acento chileno.
+1. **Grabar voz coloquial chilena del hablante objetivo** (10-15s, hablando natural con modismos) → usar como `speaker_wav` en XTTS-v2 → obtener hablante objetivo + acento chileno.
 2. **Integrar XTTS-v2 en TTS Lab** como infraestructura alternativa a Qwen3-TTS-Base.
 3. **Usar dataset `ylacombe/google-chilean-spanish`** como fuente de voces chilenas para la herramienta (31 hablantes disponibles).
 
