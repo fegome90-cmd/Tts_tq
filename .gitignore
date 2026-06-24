@@ -58,8 +58,9 @@ comfyui/models/
 # Environment
 .env
 .env.local
-# Local Pi runtime state
+# Local agent runtime state — not source. .atl/ (Pi), .claude/ (Claude Code).
 .atl/
+.claude/
 
 # External checkouts and stale worktrees — NOT part of the TTS Lab source.
 # These inflate pi-lens/LSP diagnostics with upstream third-party code that is
@@ -73,6 +74,8 @@ comfyui/
 .ruff_cache/
 .ai/
 explore/
+# Local scratch — audio datasets, model checkpoints, throwaway experiments (not source).
+tmp/
 # Pi runtime state — plan/ contains valuable markdown plans, the rest is scratch.
 .pi/*
 !.pi/plan/
