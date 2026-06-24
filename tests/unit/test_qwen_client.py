@@ -260,12 +260,12 @@ class TestQwenTTSClientModelLoading:
             language="Spanish",
             ref_audio=str(ref_audio),
             ref_text="Reference text",
-            x_vector_only_mode=False,
-            temperature=0.8,
-            top_p=0.95,
+            x_vector_only_mode=True,
+            temperature=0.7,
+            top_p=0.9,
             top_k=50,
-            repetition_penalty=1.1,
-            max_new_tokens=2048,
+            repetition_penalty=1.2,
+            max_new_tokens=512,
         )
 
     def test_clone_voice_passes_custom_controls(self, sample_audio_data, tmp_path):

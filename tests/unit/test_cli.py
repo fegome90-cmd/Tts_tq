@@ -85,11 +85,11 @@ class TestCLICommands:
             "language": "Spanish",
             "x_vector_only_mode": False,
             "seed": 42,
-            "temperature": 0.8,
-            "top_p": 0.95,
+            "temperature": 0.7,
+            "top_p": 0.9,
             "top_k": 50,
-            "repetition_penalty": 1.1,
-            "max_new_tokens": 2048,
+            "repetition_penalty": 1.2,
+            "max_new_tokens": 512,
         }
         repo_class.assert_called_once_with(output_dir=str(output.parent))
         repo_class.return_value.save.assert_called_once_with(

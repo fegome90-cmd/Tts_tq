@@ -17,11 +17,16 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CLONE_LANGUAGE: Literal["Spanish", "English", "Auto"] = "Spanish"
 DEFAULT_CLONE_SEED = 42
-DEFAULT_CLONE_TEMPERATURE = 0.8
-DEFAULT_CLONE_TOP_P = 0.95
+# Sampling defaults anchored to autoresearch O-1 (closure 2026-06-23).
+# Baseline (transformers defaults: repetition_penalty=1.05, top_p=1.0,
+# temperature=0.9, max_new_tokens=2048) caused repetition collapse in ICL
+# mode. These values prevent loops while staying close to the model's
+# intended range.
+DEFAULT_CLONE_TEMPERATURE = 0.7
+DEFAULT_CLONE_TOP_P = 0.9
 DEFAULT_CLONE_TOP_K = 50
-DEFAULT_CLONE_REPETITION_PENALTY = 1.1
-DEFAULT_CLONE_MAX_NEW_TOKENS = 2048
+DEFAULT_CLONE_REPETITION_PENALTY = 1.2
+DEFAULT_CLONE_MAX_NEW_TOKENS = 512
 
 
 class QwenTTSClient(TTSClient):
@@ -102,7 +107,7 @@ class QwenTTSClient(TTSClient):
         text: str,
         *,
         language: str = DEFAULT_CLONE_LANGUAGE,
-        x_vector_only_mode: bool = False,
+        x_vector_only_mode: bool = True,
         seed: int | None = DEFAULT_CLONE_SEED,
         temperature: float = DEFAULT_CLONE_TEMPERATURE,
         top_p: float = DEFAULT_CLONE_TOP_P,
