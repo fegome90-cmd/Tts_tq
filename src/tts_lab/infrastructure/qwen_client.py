@@ -107,7 +107,7 @@ class QwenTTSClient(TTSClient):
         text: str,
         *,
         language: str = DEFAULT_CLONE_LANGUAGE,
-        x_vector_only_mode: bool = True,
+        x_vector_only_mode: bool = False,
         seed: int | None = DEFAULT_CLONE_SEED,
         temperature: float = DEFAULT_CLONE_TEMPERATURE,
         top_p: float = DEFAULT_CLONE_TOP_P,

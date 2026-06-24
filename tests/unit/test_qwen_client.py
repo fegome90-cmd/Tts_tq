@@ -220,8 +220,8 @@ class TestQwenTTSClientModelLoading:
         with pytest.raises(TTSError, match="Failed to generate speech"):
             client.generate(request)
 
-    def test_clone_voice_calls_model(self, sample_audio_data, tmp_path):
-        """clone_voice should call model.generate_voice_clone."""
+    def test_clone_voice_defaults_to_icl(self, sample_audio_data, tmp_path):
+        """clone_voice should call model.generate_voice_clone in ICL mode by default."""
         import numpy as np
 
         from tts_lab.domain.entities import VoiceProfile
@@ -260,7 +260,7 @@ class TestQwenTTSClientModelLoading:
             language="Spanish",
             ref_audio=str(ref_audio),
             ref_text="Reference text",
-            x_vector_only_mode=True,
+            x_vector_only_mode=False,
             temperature=0.7,
             top_p=0.9,
             top_k=50,
@@ -268,8 +268,8 @@ class TestQwenTTSClientModelLoading:
             max_new_tokens=512,
         )
 
-    def test_clone_voice_passes_custom_controls(self, sample_audio_data, tmp_path):
-        """clone_voice should pass language, mode, and sampling controls."""
+    def test_clone_voice_supports_embedding_only(self, sample_audio_data, tmp_path):
+        """clone_voice should support explicit embedding-only mode."""
         import numpy as np
 
         from tts_lab.domain.entities import VoiceProfile
