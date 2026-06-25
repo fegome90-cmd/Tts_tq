@@ -154,6 +154,61 @@ class TestGenerateSpeechUseCase:
         assert isinstance(called_request, TTSRequest)
         assert called_request.speaker is None
 
+    def test_execute_threads_instruct_into_tts_request(self):
+        """Execute should populate TTSRequest.instruct from the DTO.
+
+        Mirror of ``--speaker`` threading: the CLI already accepts ``--instruct``/
+        ``-i`` (cli.py:170) and the Qwen client already consumes
+        ``request.instruct`` (qwen_client.py:97), but the DTO/use-case dropped it.
+        """
+        from tts_lab.application.dto import GenerateSpeechRequest
+        from tts_lab.application.use_cases import GenerateSpeechUseCase
+        from tts_lab.domain.entities import AudioResult, TTSRequest
+
+        mock_client = Mock()
+        mock_client.generate.return_value = AudioResult(
+            audio_data=b"fake", sample_rate=24000, duration_seconds=1.0
+        )
+        mock_repo = Mock()
+        mock_repo.save_with_hash.return_value = "/output/test.wav"
+
+        use_case = GenerateSpeechUseCase(tts_client=mock_client, audio_repo=mock_repo)
+        request = GenerateSpeechRequest(
+            text="Hello", language="English", instruct="speak calmly"
+        )
+        use_case.execute(request)
+
+        mock_client.generate.assert_called_once()
+        called_request = mock_client.generate.call_args[0][0]
+        assert isinstance(called_request, TTSRequest)
+        assert called_request.instruct == "speak calmly"
+
+    def test_execute_default_instruct_is_none(self):
+        """Regression guard: no instruct supplied → TTSRequest.instruct is None.
+
+        ``instruct`` defaults to None, so a missing ``-i`` preserves the
+        pre-change default-path behavior. Passing ``-i <text>`` is a
+        DELIBERATE behavior change (activates Qwen instruction-tuning).
+        """
+        from tts_lab.application.dto import GenerateSpeechRequest
+        from tts_lab.application.use_cases import GenerateSpeechUseCase
+        from tts_lab.domain.entities import AudioResult, TTSRequest
+
+        mock_client = Mock()
+        mock_client.generate.return_value = AudioResult(
+            audio_data=b"fake", sample_rate=24000, duration_seconds=1.0
+        )
+        mock_repo = Mock()
+        mock_repo.save_with_hash.return_value = "/output/test.wav"
+
+        use_case = GenerateSpeechUseCase(tts_client=mock_client, audio_repo=mock_repo)
+        request = GenerateSpeechRequest(text="Hello", language="English")
+        use_case.execute(request)
+
+        called_request = mock_client.generate.call_args[0][0]
+        assert isinstance(called_request, TTSRequest)
+        assert called_request.instruct is None
+
 
 class TestQwenDefaultSpeakerContractGuard:
     """Contract guard for the default no-``-s`` Qwen path (Phase 6.3).
@@ -228,6 +283,19 @@ class TestDTOs:
 
         with_speaker = GenerateSpeechRequest(text="Test", speaker="Sarah")
         assert with_speaker.speaker == "Sarah"
+
+    def test_generate_speech_request_has_instruct_default_none(self):
+        """GenerateSpeechRequest should accept instruct, defaulting to None.
+
+        Mirror of the speaker DTO test. Backs the ``--instruct``/``-i`` CLI flag.
+        """
+        from tts_lab.application.dto import GenerateSpeechRequest
+
+        request = GenerateSpeechRequest(text="Test")
+        assert request.instruct is None
+
+        with_instruct = GenerateSpeechRequest(text="Test", instruct="speak calmly")
+        assert with_instruct.instruct == "speak calmly"
 
     def test_generate_speech_response_is_frozen(self):
         """GenerateSpeechResponse should be immutable."""

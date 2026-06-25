@@ -38,6 +38,7 @@ class GenerateSpeechUseCase:
             text=request.text,
             language=request.language,
             speaker=request.speaker,
+            instruct=request.instruct,
         )
 
         # Generate speech (side effect in infrastructure)

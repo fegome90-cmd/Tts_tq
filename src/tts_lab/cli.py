@@ -211,6 +211,7 @@ def generate_speech(
                     text=text,
                     language=language,
                     speaker=speaker,
+                    instruct=instruct,
                 )
 
                 response = use_case.execute(request)
