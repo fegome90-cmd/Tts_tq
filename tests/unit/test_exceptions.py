@@ -57,3 +57,29 @@ class TestExceptions:
 
         with pytest.raises(AudioFormatError, match="format error"):
             raise AudioFormatError("format error")
+
+    def test_unsupported_operation_error_is_tts_error(self):
+        """UnsupportedOperationError should inherit from TTSError."""
+        from tts_lab.domain.exceptions import TTSError, UnsupportedOperationError
+
+        assert issubclass(UnsupportedOperationError, TTSError)
+
+    def test_unsupported_operation_error_requires_operation_provider_kwargs(self):
+        """UnsupportedOperationError ctor takes message + kw-only operation/provider."""
+        from tts_lab.domain.exceptions import UnsupportedOperationError
+
+        err = UnsupportedOperationError(
+            "not supported", operation="clone_voice", provider="inworld"
+        )
+        assert str(err) == "not supported"
+        assert err.operation == "clone_voice"
+        assert err.provider == "inworld"
+
+    def test_unsupported_operation_error_operation_provider_are_keyword_only(self):
+        """operation and provider must be keyword-only (positional rejected)."""
+        from tts_lab.domain.exceptions import UnsupportedOperationError
+
+        with pytest.raises(TypeError):
+            UnsupportedOperationError(  # type: ignore[misc]
+                "msg", "clone_voice", "inworld"
+            )

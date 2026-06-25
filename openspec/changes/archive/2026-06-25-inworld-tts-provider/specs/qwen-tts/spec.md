@@ -1,42 +1,6 @@
-# Spec: Qwen TTS Clone Controls
+# Spec Delta: Inworld TTS Provider + Speaker Threading
 
-## Requirements
-
-### Requirement: Explicit clone language
-
-The voice clone path SHALL allow callers to provide the Qwen language used for `generate_voice_clone`.
-
-#### Scenario: Default clone language
-
-- WHEN a clone request does not specify language
-- THEN the system SHALL use `Spanish` by default for the clone path.
-
-### Requirement: Base model default for cloning
-
-The CLI clone command SHALL default to `Qwen/Qwen3-TTS-12Hz-1.7B-Base`.
-
-#### Scenario: Clone command default model
-
-- WHEN a user runs the clone command without `--model`
-- THEN the command SHALL use the Qwen3-TTS Base model rather than CustomVoice.
-
-### Requirement: ICL mode remains default
-
-The clone path SHALL default to ICL behavior, equivalent to `x_vector_only_mode=False`.
-
-#### Scenario: Default clone mode
-
-- WHEN a user does not request embedding-only mode
-- THEN reference text and reference audio SHALL be used to build the voice clone prompt.
-
-### Requirement: Reproducible experiment parameters
-
-Clone and experiment tooling SHOULD expose seed, sampling, max token, and mode parameters.
-
-#### Scenario: Manifest records parameters
-
-- WHEN an experiment generates an output
-- THEN the manifest SHOULD record model path, language, reference id/path, transcript validation state, mode, seed, sampling parameters, max token limit, and output path.
+## ADDED Requirements
 
 ### Requirement: Inworld NDJSON generate contract
 
@@ -124,6 +88,8 @@ The client SHALL raise a `TTSError` when `len(request.text) > 2000` before issui
 - WHEN provider is inworld and `INWORLD_API_KEY` is unset
 - THEN a `TTSError` subclass SHALL be raised at construction.
 
+## MODIFIED Requirements
+
 ### Requirement: Speaker threading end-to-end
 
 `GenerateSpeechRequest` SHALL gain `speaker: str | None = None`. `GenerateSpeechUseCase.execute` SHALL populate `TTSRequest(speaker=request.speaker)`. The CLI `generate` command SHALL pass `--speaker` into the DTO. This reaches both `InworldTTSClient` (voice selection) and `QwenTTSClient` (multi-speaker models). This MODIFIES prior behavior: `--speaker` was previously accepted by the CLI but silently dropped.
@@ -150,6 +116,8 @@ The client SHALL raise a `TTSError` when `len(request.text) > 2000` before issui
 - AND `QwenTTSClient` SHALL invoke the model with `speaker="Serena"` (the `or` fallback)
 - AND the generated audio SHALL be byte-identical to pre-change behavior.
 
+## ADDED Requirements (error wrapping)
+
 ### Requirement: Exhaustive urllib/json/binascii exception wrapping
 
 ALL of `urllib.error.HTTPError`, `urllib.error.URLError`, `socket.timeout`, `ssl.SSLError`, `OSError`, `json.JSONDecodeError` (malformed NDJSON line), and `binascii.Error` (corrupt base64 `audioContent`) raised inside the client SHALL be wrapped into `TTSError` subclasses before leaving the client, so the domain exception contract (caught at `cli.py:128-130`) holds.
@@ -174,6 +142,8 @@ HTTP non-2xx responses SHALL produce a `TTSError` whose message contains the sta
 - THEN the `TTSError` message SHALL include the status and a truncated body
 - AND SHALL NOT contain the key or the `Basic` header.
 
+## ADDED Requirements (NDJSON edge cases)
+
 ### Requirement: NDJSON edge-case handling
 
 The client SHALL handle each `\n`-separated line: (a) leading BOM on the first line stripped before parsing; (b) `\r\n` line endings tolerated; (c) `error` object on any line → `TTSError` with sanitized message; (d) non-JSON line → `TTSError("malformed NDJSON line")` (not silently skipped); (e) `result` present but `audioContent` missing/empty → skip without error; (f) partial/truncated final line → end-of-stream after the last valid line; if no valid line was seen → `TTSError("empty/truncated response")`.
@@ -192,3 +162,11 @@ The client SHALL handle each `\n`-separated line: (a) leading BOM on the first l
 
 - WHEN the first line begins with a UTF-8 BOM
 - THEN the BOM SHALL be stripped before JSON parsing.
+
+## NON-GOALS
+
+- **`--instruct` threading is OUT OF SCOPE.** `--instruct` (cli.py:146-148) is dead code in the same pattern as `--speaker` was: the CLI accepts it, the DTO drops it, and `use_cases.py` never populates `TTSRequest.instruct` (though `entities.py:24` has the field and `qwen_client.py:97` consumes it). This change fixes `speaker` only; `instruct` remains a known latent bug to be addressed separately.
+- Async streaming / `AudioStream` entity — deferred.
+- Protocol split (`SpeechSynthesizer` + `VoiceCloner`) — deferred.
+- Retry/backoff — explicit v1 non-goal.
+- Voice cloning via Inworld — no ref-audio clone in v1.

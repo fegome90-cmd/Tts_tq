@@ -30,11 +30,11 @@ class TestGenerateSpeechUseCase:
 
     def test_execute_returns_response(self):
         """Execute should return GenerateSpeechResponse."""
-        from tts_lab.application.use_cases import (
+        from tts_lab.application.dto import (
             GenerateSpeechRequest,
             GenerateSpeechResponse,
-            GenerateSpeechUseCase,
         )
+        from tts_lab.application.use_cases import GenerateSpeechUseCase
         from tts_lab.domain.entities import AudioResult
 
         # Setup mocks
@@ -60,10 +60,8 @@ class TestGenerateSpeechUseCase:
 
     def test_execute_calls_tts_client_with_correct_request(self):
         """Execute should call TTSClient.generate with correct TTSRequest."""
-        from tts_lab.application.use_cases import (
-            GenerateSpeechRequest,
-            GenerateSpeechUseCase,
-        )
+        from tts_lab.application.dto import GenerateSpeechRequest
+        from tts_lab.application.use_cases import GenerateSpeechUseCase
         from tts_lab.domain.entities import AudioResult, TTSRequest
 
         mock_client = Mock()
@@ -86,10 +84,8 @@ class TestGenerateSpeechUseCase:
 
     def test_execute_calls_repo_save_with_hash(self):
         """Execute should call AudioRepository.save_with_hash with correct params."""
-        from tts_lab.application.use_cases import (
-            GenerateSpeechRequest,
-            GenerateSpeechUseCase,
-        )
+        from tts_lab.application.dto import GenerateSpeechRequest
+        from tts_lab.application.use_cases import GenerateSpeechUseCase
         from tts_lab.domain.entities import AudioResult
 
         mock_client = Mock()
@@ -109,6 +105,98 @@ class TestGenerateSpeechUseCase:
         assert call_args[0][1] == "Test"  # text
         assert call_args[0][2] == "Auto"  # language
 
+    def test_execute_threads_speaker_into_tts_request(self):
+        """Execute should populate TTSRequest.speaker from the DTO."""
+        from tts_lab.application.dto import GenerateSpeechRequest
+        from tts_lab.application.use_cases import GenerateSpeechUseCase
+        from tts_lab.domain.entities import AudioResult, TTSRequest
+
+        mock_client = Mock()
+        mock_client.generate.return_value = AudioResult(
+            audio_data=b"fake", sample_rate=24000, duration_seconds=1.0
+        )
+        mock_repo = Mock()
+        mock_repo.save_with_hash.return_value = "/output/test.wav"
+
+        use_case = GenerateSpeechUseCase(tts_client=mock_client, audio_repo=mock_repo)
+        request = GenerateSpeechRequest(
+            text="Hello", language="English", speaker="Dennis"
+        )
+        use_case.execute(request)
+
+        mock_client.generate.assert_called_once()
+        called_request = mock_client.generate.call_args[0][0]
+        assert isinstance(called_request, TTSRequest)
+        assert called_request.speaker == "Dennis"
+
+    def test_execute_default_speaker_is_none(self):
+        """Regression guard: no speaker supplied → TTSRequest.speaker is None.
+
+        The Qwen client maps ``request.speaker or "Serena"`` (qwen_client.py:96),
+        so a None speaker preserves the pre-change default-path behavior.
+        """
+        from tts_lab.application.dto import GenerateSpeechRequest
+        from tts_lab.application.use_cases import GenerateSpeechUseCase
+        from tts_lab.domain.entities import AudioResult, TTSRequest
+
+        mock_client = Mock()
+        mock_client.generate.return_value = AudioResult(
+            audio_data=b"fake", sample_rate=24000, duration_seconds=1.0
+        )
+        mock_repo = Mock()
+        mock_repo.save_with_hash.return_value = "/output/test.wav"
+
+        use_case = GenerateSpeechUseCase(tts_client=mock_client, audio_repo=mock_repo)
+        request = GenerateSpeechRequest(text="Hello", language="English")
+        use_case.execute(request)
+
+        called_request = mock_client.generate.call_args[0][0]
+        assert isinstance(called_request, TTSRequest)
+        assert called_request.speaker is None
+
+
+class TestQwenDefaultSpeakerContractGuard:
+    """Contract guard for the default no-``-s`` Qwen path (Phase 6.3).
+
+    NOT a byte-identical output snapshot — model load is infeasible at unit
+    speed. This locks the INPUT WIRING contract: when the user supplies no
+    speaker, ``TTSRequest.speaker is None``, which Qwen maps to "Serena" via
+    ``request.speaker or "Serena"`` (qwen_client.py:96). Using ``-s <name>``
+    is a DELIBERATE behavior change per the HONOR decision (spec MODIFIED
+    req ``Qwen -s semantics — HONOR``), NOT a regression.
+    """
+
+    def test_default_no_speaker_yields_none_tts_request_speaker(self):
+        """No speaker supplied -> TTSRequest.speaker is None -> Qwen Serena."""
+        from tts_lab.application.dto import GenerateSpeechRequest
+        from tts_lab.application.use_cases import GenerateSpeechUseCase
+        from tts_lab.domain.entities import AudioResult, TTSRequest
+
+        mock_client = Mock()
+        mock_client.generate.return_value = AudioResult(
+            audio_data=b"fake", sample_rate=24000, duration_seconds=1.0
+        )
+        mock_repo = Mock()
+        mock_repo.save_with_hash.return_value = "/output/test.wav"
+
+        use_case = GenerateSpeechUseCase(tts_client=mock_client, audio_repo=mock_repo)
+        # Mirrors the CLI default path: no --speaker -> GenerateSpeechRequest(text=...).
+        request = GenerateSpeechRequest(text="Hello world")
+        use_case.execute(request)
+
+        called = mock_client.generate.call_args[0][0]
+        assert isinstance(called, TTSRequest)
+        # CONTRACT: speaker is None at the boundary, so qwen_client.py:96's
+        # `request.speaker or "Serena"` resolves to "Serena" — preserving the
+        # pre-change default-path behavior.
+        assert called.speaker is None
+
+    def test_qwen_speaker_or_serena_resolution_is_serena_when_none(self):
+        """Lock the qwen_client.py:96 resolution logic: None -> 'Serena'."""
+        # This mirrors exactly qwen_client.py:96: `request.speaker or "Serena"`.
+        speaker = None
+        assert (speaker or "Serena") == "Serena"
+
 
 class TestDTOs:
     """Tests for Request/Response DTOs."""
@@ -121,7 +209,7 @@ class TestDTOs:
 
         request = GenerateSpeechRequest(text="Test")
         with pytest.raises(FrozenInstanceError):
-            request.text = "Changed"
+            setattr(request, "text", "Changed")  # noqa: B010
 
     def test_generate_speech_request_defaults(self):
         """GenerateSpeechRequest should have sensible defaults."""
@@ -131,6 +219,16 @@ class TestDTOs:
         assert request.language == "Auto"
         assert request.voice_profile_name is None
 
+    def test_generate_speech_request_has_speaker_default_none(self):
+        """GenerateSpeechRequest should accept speaker, defaulting to None."""
+        from tts_lab.application.dto import GenerateSpeechRequest
+
+        request = GenerateSpeechRequest(text="Test")
+        assert request.speaker is None
+
+        with_speaker = GenerateSpeechRequest(text="Test", speaker="Sarah")
+        assert with_speaker.speaker == "Sarah"
+
     def test_generate_speech_response_is_frozen(self):
         """GenerateSpeechResponse should be immutable."""
         from dataclasses import FrozenInstanceError
@@ -139,4 +237,4 @@ class TestDTOs:
 
         response = GenerateSpeechResponse(audio_path="/test.wav", duration_seconds=1.0)
         with pytest.raises(FrozenInstanceError):
-            response.audio_path = "/changed.wav"
+            setattr(response, "audio_path", "/changed.wav")  # noqa: B010

@@ -17,11 +17,16 @@ class GenerateSpeechRequest:
         text: Text to convert to speech.
         language: Language for synthesis (default: Auto).
         voice_profile_name: Optional voice profile to use for cloning.
+        speaker: Optional speaker name threaded end-to-end into TTSRequest.
+            Reaches Qwen (multi-speaker models) and Inworld (per-voice
+            selection via voiceId). Fixes the latent dead-code ``--speaker``
+            bug where the CLI accepted the flag but the DTO dropped it.
     """
 
     text: str
     language: Language = "Auto"
     voice_profile_name: str | None = None
+    speaker: str | None = None
 
 
 @dataclass(frozen=True)

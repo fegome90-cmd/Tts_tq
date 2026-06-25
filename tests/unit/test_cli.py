@@ -178,3 +178,47 @@ class TestCLICommands:
         assert result.exit_code == 0
         assert "clone" in result.stdout
         assert "generate" in result.stdout
+
+    def test_clone_command_refused_when_provider_is_inworld(self, tmp_path):
+        """Clone command refuses when TTS_PROVIDER=inworld (guard fires pre-client).
+
+        The CLI guard at ``tts_lab/cli.py`` checks ``config.provider == 'inworld'``
+        BEFORE constructing any TTS client (so no model is loaded and no network
+        is touched). It prints an Inworld-specific message and exits 1. This
+        test locks that guard so a future refactor can't accidentally route
+        Inworld into the Qwen cloning path or vice-versa.
+        """
+        from tts_lab.cli import app
+
+        reference_audio = tmp_path / "reference.wav"
+        reference_audio.write_bytes(b"fake wav")
+
+        with runner.isolated_filesystem():
+            # Set TTS_PROVIDER=inworld for just this invocation.
+            import os
+
+            old = os.environ.get("TTS_PROVIDER")
+            os.environ["TTS_PROVIDER"] = "inworld"
+            try:
+                result = runner.invoke(
+                    app,
+                    [
+                        "clone",
+                        str(reference_audio),
+                        "--ref-text",
+                        "Reference text",
+                        "--text",
+                        "Hola mundo",
+                    ],
+                )
+            finally:
+                if old is None:
+                    os.environ.pop("TTS_PROVIDER", None)
+                else:
+                    os.environ["TTS_PROVIDER"] = old
+
+        # Guard fires: exit 1, message mentions Inworld + not-supported.
+        assert result.exit_code == 1
+        combined = (result.stdout or "") + (result.output or "")
+        assert "Inworld" in combined
+        assert "not supported" in combined.lower()

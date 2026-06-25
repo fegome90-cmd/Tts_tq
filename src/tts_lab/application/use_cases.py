@@ -37,6 +37,7 @@ class GenerateSpeechUseCase:
         tts_request = TTSRequest(
             text=request.text,
             language=request.language,
+            speaker=request.speaker,
         )
 
         # Generate speech (side effect in infrastructure)

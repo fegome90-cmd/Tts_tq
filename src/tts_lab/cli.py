@@ -3,6 +3,7 @@
 Provides command-line interface for voice cloning and speech generation.
 """
 
+import os
 from pathlib import Path
 from typing import Annotated
 
@@ -25,11 +26,22 @@ from tts_lab.infrastructure.qwen_client import (
     DEFAULT_CLONE_TOP_P,
     QwenTTSClient,
 )
+from tts_lab.infrastructure.tts_provider import create_tts_client
 
 console = Console()
 
 # Single app with multiple commands
 app = typer.Typer(help="TTS Lab - Voice Cloning Laboratory")
+
+
+def _provider_from_env() -> str:
+    """Read TTS_PROVIDER from env (default 'qwen').
+
+    Tiny helper so CLI commands that build an explicit :class:`TTSConfig`
+    still honor the active provider for guards/switching without duplicating
+    the env-read logic (config is the single owner otherwise).
+    """
+    return os.getenv("TTS_PROVIDER", "qwen")
 
 
 @app.command("clone")
@@ -88,7 +100,19 @@ def clone_voice(
     Example:
         tts clone reference.wav -r "This is my reference text." -t "Hello world!" -o output.wav
     """
-    config = TTSConfig(model_path=model_path, device=device, output_dir=str(output.parent))
+    config = TTSConfig(
+        model_path=model_path,
+        device=device,
+        output_dir=str(output.parent),
+        provider=_provider_from_env(),
+    )
+
+    if config.provider == "inworld":
+        console.print(
+            "[red]✗[/red] Voice cloning is not supported by the Inworld provider. "
+            "Set TTS_PROVIDER=qwen (or unset it) to clone with the Qwen model."
+        )
+        raise typer.Exit(code=1)
 
     with Progress(
         SpinnerColumn(),
@@ -161,7 +185,12 @@ def generate_speech(
     Example:
         tts generate "Hello world!" -l English -s Serena -o output.wav
     """
-    config = TTSConfig(model_path=model_path, device=device, output_dir=str(output.parent))
+    config = TTSConfig(
+        model_path=model_path,
+        device=device,
+        output_dir=str(output.parent),
+        provider=_provider_from_env(),
+    )
 
     with Progress(
         SpinnerColumn(),
@@ -171,13 +200,17 @@ def generate_speech(
         task = progress.add_task("Generating speech...", total=None)
 
         try:
-            with QwenTTSClient(model_path=config.model_path, device=config.device) as client:
+            client = create_tts_client(config)
+            # Both QwenTTSClient and InworldTTSClient are context managers;
+            # the domain TTSClient protocol omits CM methods by design.
+            with client:  # type: ignore[attr-defined]
                 repo = FileAudioRepository(output_dir=str(output.parent))
                 use_case = GenerateSpeechUseCase(tts_client=client, audio_repo=repo)
 
                 request = GenerateSpeechRequest(
                     text=text,
                     language=language,
+                    speaker=speaker,
                 )
 
                 response = use_case.execute(request)
