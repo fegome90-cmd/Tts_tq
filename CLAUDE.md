@@ -81,7 +81,7 @@ uv run tts-clone voice reference.wav "Transcription." "Text to speak" -o cloned.
 | `src/tts_lab/domain/entities.py` | Core domain models |
 | `src/tts_lab/domain/protocols.py` | Abstract interfaces |
 | `src/tts_lab/infrastructure/qwen_client.py` | TTS client implementation |
-| `src/tts_lab/infrastructure/config.py` | Settings (pydantic-settings) |
+| `src/tts_lab/infrastructure/config.py` | Settings (frozen dataclass + `os.getenv`) |
 | `scripts/prepare_reference.py` | Normalize and slice reference audio |
 | `scripts/transcribe_reference.py` | Generate transcription bundles |
 | `scripts/compare_reference_configs.py` | Compare voice cloning configurations |

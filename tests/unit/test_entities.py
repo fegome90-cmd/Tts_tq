@@ -17,7 +17,7 @@ class TestTTSRequest:
 
         request = TTSRequest(text="Hola mundo", language="Spanish")
         with pytest.raises(FrozenInstanceError):
-            request.text = "Changed"
+            setattr(request, "text", "Changed")  # noqa: B010
 
     def test_tts_request_defaults(self):
         """TTSRequest should have sensible defaults."""
@@ -62,7 +62,7 @@ class TestAudioResult:
 
         audio = AudioResult(audio_data=b"fake", sample_rate=24000, duration_seconds=1.0)
         with pytest.raises(FrozenInstanceError):
-            audio.sample_rate = 48000
+            setattr(audio, "sample_rate", 48000)  # noqa: B010
 
     def test_audio_result_required_fields(self):
         """AudioResult should require audio_data, sample_rate, duration_seconds."""
@@ -99,7 +99,7 @@ class TestVoiceProfile:
             reference_text="Hola, esta es mi voz.",
         )
         with pytest.raises(FrozenInstanceError):
-            profile.name = "changed"
+            setattr(profile, "name", "changed")  # noqa: B010
 
     def test_voice_profile_required_fields(self):
         """VoiceProfile should require name, reference_audio_path, reference_text."""

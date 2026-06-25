@@ -1,6 +1,7 @@
 """Unit tests for comparison manifest helpers."""
 
 from pathlib import Path
+from typing import Any, cast
 
 from tts_lab.infrastructure.comparison_manifest import (
     ComparisonResult,
@@ -95,6 +96,9 @@ def test_build_manifest_serializes_cases() -> None:
 
     assert manifest["model_path"] == "model"
     assert manifest["target_text"] == "hola"
-    assert manifest["cases"][0]["status"] == "success"
-    assert manifest["cases"][0]["case"]["mode"] == "icl"
-    assert manifest["cases"][0]["case"]["bundle_path"] == _bundle_json_path()
+    # build_manifest returns dict[str, object]; cases is a nested list[dict],
+    # narrowed via cast so mypy allows indexing the nested structure.
+    cases = cast(list[dict[str, Any]], manifest["cases"])
+    assert cases[0]["status"] == "success"
+    assert cases[0]["case"]["mode"] == "icl"
+    assert cases[0]["case"]["bundle_path"] == _bundle_json_path()

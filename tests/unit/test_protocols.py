@@ -13,7 +13,9 @@ class TestTTSClientProtocol:
         """TTSClient should be a Protocol."""
         from tts_lab.domain.protocols import TTSClient
 
-        assert issubclass(TTSClient, Protocol)
+        # Runtime check: TTSClient subclasses Protocol. mypy can't verify this
+        # statically because typing.Protocol is a special form, not a class.
+        assert issubclass(TTSClient, Protocol)  # type: ignore[arg-type]
 
     def test_tts_client_has_generate_method(self):
         """TTSClient should have generate method."""
@@ -36,7 +38,9 @@ class TestAudioRepositoryProtocol:
         """AudioRepository should be a Protocol."""
         from tts_lab.domain.protocols import AudioRepository
 
-        assert issubclass(AudioRepository, Protocol)
+        # Runtime check: AudioRepository subclasses Protocol. mypy can't verify
+        # this statically because typing.Protocol is a special form, not a class.
+        assert issubclass(AudioRepository, Protocol)  # type: ignore[arg-type]
 
     def test_audio_repository_has_save_method(self):
         """AudioRepository should have save method."""
@@ -62,13 +66,13 @@ class TestProtocolCompliance:
 
     def test_mock_tts_client_satisfies_protocol(self):
         """A mock TTSClient should satisfy the protocol."""
-        from tts_lab.domain.entities import AudioResult, TTSRequest
+        from tts_lab.domain.entities import AudioResult, TTSRequest, VoiceProfile
 
         class MockTTSClient:
             def generate(self, request: TTSRequest) -> AudioResult:
                 return AudioResult(audio_data=b"test", sample_rate=24000, duration_seconds=1.0)
 
-            def clone_voice(self, profile, text: str) -> AudioResult:
+            def clone_voice(self, profile: VoiceProfile, text: str) -> AudioResult:
                 return AudioResult(audio_data=b"test", sample_rate=24000, duration_seconds=1.0)
 
         client = MockTTSClient()
