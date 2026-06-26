@@ -37,17 +37,4 @@ class GenerateSpeechRequest:
     instruct: str | None = None
 
 
-@dataclass(frozen=True)
-class GenerateSpeechResponse:
-    """Response DTO for speech generation.
-
-    Attributes:
-        audio_path: Path to the generated audio file.
-        duration_seconds: Duration of the generated audio.
-    """
-
-    audio_path: str
-    duration_seconds: float
-
-
-__all__ = ["GenerateSpeechRequest", "GenerateSpeechResponse", "Language"]
+__all__ = ["GenerateSpeechRequest", "Language"]
