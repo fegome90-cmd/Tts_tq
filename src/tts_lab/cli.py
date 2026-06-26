@@ -13,7 +13,11 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from tts_lab.application.dto import GenerateSpeechRequest, Language
 from tts_lab.application.use_cases import GenerateSpeechUseCase
-from tts_lab.domain.entities import VoiceProfile
+from tts_lab.domain.entities import (
+    GenerationFailure,
+    GenerationSuccess,
+    VoiceProfile,
+)
 from tts_lab.infrastructure.config import TTSConfig
 from tts_lab.infrastructure.file_storage import FileAudioRepository
 from tts_lab.infrastructure.qwen_client import (
@@ -47,9 +51,13 @@ def _provider_from_env() -> str:
 @app.command("clone")
 def clone_voice(
     reference_audio: Annotated[Path, typer.Argument(help="Path to reference audio file")],
-    reference_text: Annotated[str, typer.Option("--ref-text", "-r", help="Transcription of reference audio")],
+    reference_text: Annotated[
+        str, typer.Option("--ref-text", "-r", help="Transcription of reference audio")
+    ],
     text: Annotated[str, typer.Option("--text", "-t", help="Text to speak with cloned voice")],
-    output: Annotated[Path, typer.Option("--output", "-o", help="Output path")] = Path("output/cloned.wav"),
+    output: Annotated[Path, typer.Option("--output", "-o", help="Output path")] = Path(
+        "output/cloned.wav"
+    ),
     model_path: Annotated[
         str,
         typer.Option(
@@ -78,7 +86,9 @@ def clone_voice(
     temperature: Annotated[
         float, typer.Option("--temperature", help="Sampling temperature")
     ] = DEFAULT_CLONE_TEMPERATURE,
-    top_p: Annotated[float, typer.Option("--top-p", help="Nucleus sampling top-p")] = DEFAULT_CLONE_TOP_P,
+    top_p: Annotated[
+        float, typer.Option("--top-p", help="Nucleus sampling top-p")
+    ] = DEFAULT_CLONE_TOP_P,
     top_k: Annotated[int, typer.Option("--top-k", help="Top-k sampling")] = DEFAULT_CLONE_TOP_K,
     repetition_penalty: Annotated[
         float,
@@ -157,7 +167,9 @@ def clone_voice(
 @app.command("generate")
 def generate_speech(
     text: Annotated[str, typer.Argument(help="Text to convert to speech")],
-    output: Annotated[Path, typer.Option("--output", "-o", help="Output path")] = Path("output/speech.wav"),
+    output: Annotated[Path, typer.Option("--output", "-o", help="Output path")] = Path(
+        "output/speech.wav"
+    ),
     language: Annotated[
         Language,
         typer.Option(
@@ -199,30 +211,56 @@ def generate_speech(
     ) as progress:
         task = progress.add_task("Generating speech...", total=None)
 
+        # Initialization only: create_tts_client + CM + repo/use_case
+        # construction + request build + execute(). Wait — execute() returns
+        # GenerationResult (failure is data, NOT raised), so it cannot raise
+        # a GenerationFailure. BUT it CAN raise a programming bug (KeyError,
+        # AttributeError). Per R2 "no swallowing programming bugs", execute()
+        # MUST sit OUTSIDE the except-Exception block. Same for request build.
+        #
+        # So this try covers ONLY: client creation, CM entry, repo/use_case
+        # construction. execute() is called after the try, inside the CM.
         try:
             client = create_tts_client(config)
-            # Both QwenTTSClient and InworldTTSClient are context managers;
-            # the domain TTSClient protocol omits CM methods by design.
-            with client:  # type: ignore[attr-defined]
-                repo = FileAudioRepository(output_dir=str(output.parent))
-                use_case = GenerateSpeechUseCase(tts_client=client, audio_repo=repo)
-
-                request = GenerateSpeechRequest(
-                    text=text,
-                    language=language,
-                    speaker=speaker,
-                    instruct=instruct,
-                )
-
-                response = use_case.execute(request)
-
-            progress.update(task, completed=True)
-            console.print(f"[green]✓[/green] Audio saved to: {response.audio_path}")
-            console.print(f"  Duration: {response.duration_seconds:.2f}s")
-
+        except typer.Exit:
+            raise
         except Exception as e:
-            console.print(f"[red]✗ Error:[/red] {e}")
+            # Init failure only (model load, provider guard).
+            # `from None`: typer.Exit is a control-flow signal, NOT caused by
+            # the caught exception — chaining would misleadingly suggest
+            # causation. The error class+message is already printed above.
+            progress.update(task, completed=True)
+            console.print(f"[red]✗ Error:[/red] {type(e).__name__}: {e}")
             raise typer.Exit(code=1) from None
+
+        # Both QwenTTSClient and InworldTTSClient are context managers;
+        # the domain TTSClient protocol omits CM methods by design.
+        with client:  # type: ignore[attr-defined]
+            repo = FileAudioRepository(output_dir=str(output.parent))
+            use_case = GenerateSpeechUseCase(tts_client=client, audio_repo=repo)
+
+            request = GenerateSpeechRequest(
+                text=text,
+                language=language,
+                speaker=speaker,
+                instruct=instruct,
+            )
+            # execute() returns GenerationResult; does NOT raise TTS errors
+            # (they are wrapped into GenerationFailure). Programming bugs
+            # (KeyError/AttributeError) propagate uncaught per R2.
+            result = use_case.execute(request)
+
+        progress.update(task, completed=True)
+
+        # Consume GenerationResult via match — failure is data, NOT raised.
+        match result:
+            case GenerationSuccess():
+                console.print(f"[green]✓[/green] Audio saved to: {result.audio_path}")
+                console.print(f"  Duration: {result.duration_seconds:.2f}s")
+            case GenerationFailure():
+                # Print error_class_name only — NEVER str(error) (R5 + R3).
+                console.print(f"[red]✗ Error:[/red] {type(result.error).__name__}")
+                raise typer.Exit(code=1) from None
 
 
 # Entry points for pyproject.toml
