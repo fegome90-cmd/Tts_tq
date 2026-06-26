@@ -113,3 +113,104 @@ class TestVoiceProfile:
         assert profile.name == "felipe"
         assert profile.reference_audio_path == "/voice_profiles/felipe/reference.wav"
         assert profile.reference_text == "Esta es una grabación de referencia."
+
+
+class TestGenerationSuccess:
+    """Tests for GenerationSuccess domain entity (generation-result-envelope R1)."""
+
+    def test_generation_success_construction(self):
+        """GenerationSuccess should expose path/warnings/duration/sample_rate."""
+        from tts_lab.domain.entities import GenerationSuccess
+
+        result = GenerationSuccess(
+            audio_path="/output/speech_abc123.wav",
+            warnings=(),
+            duration_seconds=2.5,
+            sample_rate=24000,
+        )
+        assert result.audio_path == "/output/speech_abc123.wav"
+        assert result.warnings == ()
+        assert result.duration_seconds == pytest.approx(2.5)
+        assert result.sample_rate == 24000
+
+    def test_generation_success_is_frozen(self):
+        """GenerationSuccess should be immutable."""
+        from tts_lab.domain.entities import GenerationSuccess
+
+        result = GenerationSuccess(
+            audio_path="/x.wav",
+            warnings=(),
+            duration_seconds=1.0,
+            sample_rate=24000,
+        )
+        with pytest.raises(FrozenInstanceError):
+            setattr(result, "audio_path", "/changed.wav")  # noqa: B010
+
+    def test_generation_success_has_no_audio_data(self):
+        """GenerationSuccess MUST NOT carry bytes (invalid-state-unrepresentable)."""
+        from tts_lab.domain.entities import GenerationSuccess
+
+        result = GenerationSuccess(
+            audio_path="/x.wav",
+            warnings=(),
+            duration_seconds=1.0,
+            sample_rate=24000,
+        )
+        # No audio_data / bytes field on Success — bytes are dead weight post-save.
+        assert not hasattr(result, "audio_data")
+        assert not hasattr(result, "bytes")
+
+
+class TestGenerationFailure:
+    """Tests for GenerationFailure domain entity (generation-result-envelope R1)."""
+
+    def test_generation_failure_construction(self):
+        """GenerationFailure should wrap a TTSError."""
+        from tts_lab.domain.entities import GenerationFailure
+        from tts_lab.domain.exceptions import ModelLoadError
+
+        failure = GenerationFailure(error=ModelLoadError("boom"))
+        assert isinstance(failure.error, ModelLoadError)
+
+    def test_generation_failure_is_frozen(self):
+        """GenerationFailure should be immutable."""
+        from tts_lab.domain.entities import GenerationFailure
+        from tts_lab.domain.exceptions import ModelLoadError
+
+        failure = GenerationFailure(error=ModelLoadError("boom"))
+        with pytest.raises(FrozenInstanceError):
+            setattr(failure, "error", ModelLoadError("other"))  # noqa: B010
+
+    def test_generation_failure_has_no_audio_path(self):
+        """GenerationFailure MUST NOT expose audio_path (guard against flat-envelope drift)."""
+        from tts_lab.domain.entities import GenerationFailure
+        from tts_lab.domain.exceptions import ModelLoadError
+
+        failure = GenerationFailure(error=ModelLoadError("boom"))
+        assert not hasattr(failure, "audio_path")
+        assert not hasattr(failure, "duration_seconds")
+        assert not hasattr(failure, "sample_rate")
+
+
+class TestGenerationResultUnion:
+    """Tests for GenerationResult TypeAlias (generation-result-envelope R1)."""
+
+    def test_generation_result_union_accepts_both_variants(self):
+        """GenerationResult should accept Success and Failure (importable)."""
+        from tts_lab.domain.entities import (
+            GenerationFailure,
+            GenerationResult,
+            GenerationSuccess,
+        )
+        from tts_lab.domain.exceptions import ModelLoadError
+
+        success: GenerationResult = GenerationSuccess(
+            audio_path="/x.wav",
+            warnings=(),
+            duration_seconds=1.0,
+            sample_rate=24000,
+        )
+        failure: GenerationResult = GenerationFailure(error=ModelLoadError("boom"))
+
+        assert isinstance(success, GenerationSuccess)
+        assert isinstance(failure, GenerationFailure)
