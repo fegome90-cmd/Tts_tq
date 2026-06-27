@@ -3,8 +3,9 @@ name: CI
 on:
   push:
     branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
+  # Run CI on every pull request, including stacked PRs whose base is another
+  # feature branch (not main/develop). Without this, stacked PRs get no checks.
+  pull_request: {}
 
 # Cancel in-progress runs for same branch
 concurrency:
@@ -22,7 +23,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -31,7 +32,7 @@ jobs:
         run: uv sync --all-extras
 
       - name: Run Ruff
-        uses: astral-sh/ruff-action@v3
+        run: uv run ruff check .
 
   # Job 2: Type checking with mypy
   typecheck:
@@ -43,7 +44,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -52,7 +53,7 @@ jobs:
         run: uv sync --all-extras
 
       - name: Run mypy
-        run: mypy src/
+        run: uv run mypy src tests
 
   # Job 3: Testing with pytest
   test:
@@ -64,8 +65,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-          cache: 'pip'
+          python-version: "3.12"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -74,7 +74,12 @@ jobs:
         run: uv sync --all-extras
 
       - name: Run pytest with coverage
-        run: pytest --cov=tts_lab --cov-report=xml --cov-report=term-missing --cov-fail-under=80
+        run: |
+          uv run pytest \
+            --cov=tts_lab \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=80
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
@@ -92,7 +97,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -101,10 +106,10 @@ jobs:
         run: uv sync --all-extras
 
       - name: Run Bandit
-        run: bandit -r src/ -f json || true
+        run: uv run bandit -r src/ -f json || true
 
       - name: Run Safety
-        run: safety check --json || true
+        run: uv run safety check --json || true
 
       - name: Run pip-audit
-        run: pip-audit --format=json || true
+        run: uv run pip-audit --format=json || true
