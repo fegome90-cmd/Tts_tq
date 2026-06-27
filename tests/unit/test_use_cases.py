@@ -339,12 +339,12 @@ class TestDTOs:
         with_instruct = GenerateSpeechRequest(text="Test", instruct="speak calmly")
         assert with_instruct.instruct == "speak calmly"
 
-        def test_generate_speech_response_is_removed(self):
-            """GenerateSpeechResponse MUST be deleted from dto.py (R4)."""
-            import importlib
+    def test_generate_speech_response_is_removed(self):
+        """GenerateSpeechResponse MUST be deleted from dto.py (R4)."""
+        import importlib
 
-            dto = importlib.import_module("tts_lab.application.dto")
-            assert not hasattr(dto, "GenerateSpeechResponse")
+        dto = importlib.import_module("tts_lab.application.dto")
+        assert not hasattr(dto, "GenerateSpeechResponse")
 
 
 class TestGenerationFailureObservability:
