@@ -3,6 +3,8 @@
 Use cases orchestrate domain logic and delegate side effects to infrastructure.
 """
 
+import logging
+
 from tts_lab.application.dto import GenerateSpeechRequest
 from tts_lab.domain.entities import (
     GenerationFailure,
@@ -12,6 +14,8 @@ from tts_lab.domain.entities import (
 )
 from tts_lab.domain.exceptions import AudioStorageError, TTSError
 from tts_lab.domain.protocols import AudioRepository, TTSClient
+
+logger = logging.getLogger(__name__)
 
 
 class GenerateSpeechUseCase:
@@ -57,6 +61,7 @@ class GenerateSpeechUseCase:
             path = self._repo.save_with_hash(audio, request.text, request.language)
         except TTSError as e:
             # Pass-through: generate() raised a typed TTS error.
+            logger.debug("Speech generation failed", exc_info=True)
             return GenerationFailure(e)
         except OSError as e:
             # Wrap disk/IO from save_with_hash into AudioStorageError(TTSError)
@@ -64,6 +69,7 @@ class GenerateSpeechUseCase:
             # (mypy-strict). Original OSError preserved via explicit chaining.
             wrapped = AudioStorageError(f"audio storage failed: {e}")
             wrapped.__cause__ = e
+            logger.debug("Speech generation failed", exc_info=True)
             return GenerationFailure(wrapped)
 
         return GenerationSuccess(
