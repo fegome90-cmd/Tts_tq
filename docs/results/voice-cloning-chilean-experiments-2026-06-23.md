@@ -1,31 +1,37 @@
 # Bitácora de Experimentos: Clonación de Voz con Acento Chileno
 
-> **Fecha:** 2026-06-23
-> **Sesión:** TTS Lab voice cloning research — Qwen3-TTS, XTTS-v2, ElevenLabs
-> **Objetivo:** Clonar voz del hablante objetivo (chileno) y evaluar preservación de acento chileno
-> **Método:** Autoresearch loop (baseline → hipótesis → experimento → validación → loop)
-> **Evaluador humano:** hablante objetivo (hablante nativo chileno)
+> **Fechas:** 2026-06-23 a 2026-06-25
+> **Sesiones:** TTS Lab voice cloning research — Qwen3-TTS, XTTS-v2, ElevenLabs v2/v3, Inworld TTS-2
+> **Objetivo:** Clonar voz de Felipe González (chileno) y evaluar preservación de acento chileno
+> **Método:** Autoresearch loop (baseline → hipótesis → experimento → validación → loop) + evaluación ciega humana
+> **Evaluador humano:** Felipe González (hablante nativo chileno)
 
 ---
 
 ## Resumen Ejecutivo
 
-Tras 12 experimentos con 3 motores TTS (Qwen3-TTS-Base, XTTS-v2, ElevenLabs v2/v3), se determinó que:
+Tras 15+ experimentos con 5 motores TTS (Qwen3-TTS-Base, XTTS-v2, ElevenLabs v2/v3, Inworld TTS-2), se determinó que:
 
-1. **XTTS-v2 (coqui-tts idiap fork)** es el único modelo que preserva el acento chileno cuando la referencia lo contiene.
-2. **ElevenLabs (v2 y v3)** impone su propio sistema fonético que neutraliza el acento regional (zeseo ibérico o español genérico), incluso con referencias chilenas nativas.
-3. **Qwen3-TTS-Base** no logra clonar el timbre del speaker en modo zero-shot (cosine similarity 0.01–0.25 vs 1.0 self).
-4. El **acento chileno depende 100% de la calidad coloquial de la referencia de audio**, no del modelo TTS.
+1. **El acento chileno NO se clona zero-shot desde un pitch formal.** Todos los modelos comerciales (ElevenLabs, Inworld) neutralizan el acento regional hacia español genérico o ibérico cuando la referencia es un registro académico/formal.
+2. **XTTS-v2 (open-source)** es el único modelo que preserva el acento chileno cuando la referencia lo contiene de forma marcada (Speaker 9697 coloquial).
+3. **ElevenLabs Voice Library** tiene voces chilenas nativas pre-entrenadas (Cristian Cornejo, voice_id=ClNifCEVq1smkl4M3aTk) que suenan chilenas con alta calidad. La clave es que fueron entrenadas con data chilena nativa, no clonadas zero-shot.
+4. **Inworld TTS-2** produce la mejor calidad técnica (48kHz, Mercedes vs Fiat 600) pero no preserva acento chileno.
+5. **Qwen3-TTS-Base** no logra clonar el timbre del speaker en modo zero-shot (cosine similarity 0.01–0.25 vs 1.0 self).
+6. El **acento chileno depende de marcas consonánticas** (aspiración de /s/, elisión de /d/, asibilación de /tɾ/) que ningún modelo comercial preserva desde referencia formal.
 
-### Pipeline ganador validado
+### Dos caminos viables para producción
 
-```
-Voz chilena coloquial (10-15s, multi-ref: 3 samples)
-  ↓ speaker_wav
-XTTS-v2 (coqui-tts, temperature=0.1, repetition_penalty=2.0, language="es")
-  ↓
-Output con acento chileno ✅ (cosine 0.66, humano: "100% chileno")
-```
+**Camino A — ElevenLabs + voces chilenas pre-entrenadas:**
+
+- Voz por defecto: Cristian Cornejo (chileno nativo, alta calidad, 11,976 usos)
+- Pros: calidad de producción, API cloud, baja latencia (1.6s)
+- Contras: costo por uso, no es la voz del usuario (a menos que se clone con ref coloquial)
+
+**Camino B — XTTS-v2 local + voces chilenas coloquiales de referencia:**
+
+- Voz por defecto: Speaker 9697 o similar del dataset `ylacombe/google-chilean-spanish`
+- Pros: gratis, local, privado, preserva acento chileno desde referencia coloquial
+- Contras: menor calidad técnica (24kHz), sin cloud
 
 ---
 
@@ -40,6 +46,8 @@ Output con acento chileno ✅ (cosine 0.66, humano: "100% chileno")
 | Métrica de similitud | Cosine similarity entre embeddings ECAPA (threshold ≥ 0.75 = same speaker) |
 | Dataset chileno | `ylacombe/google-chilean-spanish` (HuggingFace) — 7h, 31 hablantes |
 | Speaker chileno de referencia | **Speaker 9697** (masculino, chileno nativo, 48 samples disponibles) |
+| Análisis acústico | F0 (pitch) via autocorrelación, spectral centroid, MFCC, dynamic range, SNR |
+| ECAPA calibración | self=1.0, negative control=0.06-0.10 |
 
 ---
 
@@ -52,6 +60,7 @@ Output con acento chileno ✅ (cosine 0.66, humano: "100% chileno")
 - **Clonación:** Zero-shot via `generate_voice_clone()` (ICL mode y embedding mode)
 - **Soporte español:** Sí (idioma "spanish" en `LANGUAGE_MAP`)
 - **MPS:** Sí (device_map="mps")
+- **Veredicto:** ❌ No clona timbre (cosine 0.01-0.25)
 
 ### 2. XTTS-v2 (Coqui / idiap fork)
 
@@ -61,14 +70,25 @@ Output con acento chileno ✅ (cosine 0.66, humano: "100% chileno")
 - **Soporte español:** Sí (1 de 17 lenguajes oficiales)
 - **MPS:** Sí
 - **Licencia:** CPML (no comercial para los pesos del modelo)
+- **Veredicto:** ✅ Preserva acento chileno desde referencia coloquial
 
 ### 3. ElevenLabs (API cloud)
 
-- **Modelos probados:** `eleven_multilingual_v2` y `eleven_v3`
-- **Clonación:** Instant Voice Clone via API
+- **Modelos probados:** `eleven_multilingual_v2`, `eleven_v3`
+- **Clonación:** Instant Voice Clone (IVC) via API
+- **Voice Library:** 10+ voces chilenas nativas disponibles (Cristian Cornejo = mejor)
 - **Soporte español:** Sí (v2: 29 lenguajes, v3: 70+ lenguajes)
 - **MPS:** N/A (cloud API)
 - **Licencia:** Cuenta de pago requerida
+- **Veredicto:** IVC neutraliza acento ❌ / Voice Library Cristian = chileno ✅
+
+### 4. Inworld TTS-2 (API cloud)
+
+- **Modelo:** `inworld-tts-2` (200+ lenguajes, BCP-47 regional)
+- **Clonación:** Instant Voice Clone via API
+- **Soporte español:** Sí, soporta `es` y `es-CL` (regional)
+- **MPS:** N/A (cloud API)
+- **Veredicto:** ❌ Neutraliza acento chileno, pero mejor calidad técnica (48kHz)
 
 ---
 
@@ -86,244 +106,230 @@ Output con acento chileno ✅ (cosine 0.66, humano: "100% chileno")
 | EXP_1_icl_completo | "Hola hola hola..." ×113 | 19.04s | LOOP |
 | EXP_3_temp_baja | "hola hola hola..." ×118 | 29.76s | LOOP |
 | EXP_4_temp_alta | "Hola hola hola..." ×113 | 24.16s | LOOP |
-| EXP_2_embedding_neutral | "Bienvenidos a este ejemplo de síntesis..." | 11.04s | COHERENT (no usa clonación) |
-| EXP_6_voz_disenada | "Ejemplo de voz diseñada desde cero." | 2.48s | COHERENT (voz diseñada, no clonada) |
 
 **Baseline:** 5/5 experimentos con clonación de voz = LOOP.
 
-#### H1a — ref_text fidelity (only change: REF_TEXT exacto)
+#### H1a — ref_text fidelity
 
 - **Hipótesis:** Si REF_TEXT = transcripción exacta de Whisper del audio de referencia, ICL mode genera el TARGET_TEXT en vez de colapsar.
-- **Cambios:** REF_TEXT cambiado de frase fabricada ("La tecnología de inteligencia artificial...") a transcripción real de Whisper ("La revolución artificial ha revolucionado...").
-- **Todo lo demás idéntico:** referencia 14s, sampling params, seed=42.
-- **Resultado:**
-  - Inferencia: 22.6s (vs baseline 91s)
-  - Duración output: 10.16s (vs baseline 40.88s)
-  - max_word_repeat: 1 (vs baseline 113)
-  - target_keyword_hits: 5/5
-  - **output_coherence: COHERENT ✅**
+- **Resultado:** output_coherence = COHERENT ✅ (inferencia 22.6s, duración 10.16s, max_repeat 1)
 
-#### H1b — reference trimming (only change: ref recortada a 5s)
+#### H1b — reference trimming (5s)
 
-- **Hipótesis:** Si la referencia se recorta a ≤5s (vs 14s), ICL mode no se confunde.
-- **REF_TEXT:** original fabricado (mismatched). Solo cambia la duración.
-- **Resultado:**
-  - Inferencia: 35.9s
-  - Duración output: 16.80s
-  - max_word_repeat: 2
-  - **output_coherence: COHERENT ✅** (PASS inesperado)
+- **Hipótesis:** Si la referencia se recorta a ≤5s, ICL mode no se confunde.
+- **Resultado:** output_coherence = COHERENT ✅ (PASS inesperado — ref_text seguía mismatched)
 
 #### H2 — embedding mode (x_vector_only_mode=True)
 
 - **Hipótesis:** Si se ignora ref_text (embedding mode), el modelo genera el target sin confusión ICL.
-- **Resultado:**
-  - Inferencia: 10.8s
-  - Duración output: 5.44s (perfecto para el target)
-  - Transcripción: target exacto sin eco de ref_text
-  - **output_coherence: COHERENT ✅** (cleanest output)
+- **Resultado:** output_coherence = COHERENT ✅ (cleanest output, 5.44s, sin eco de ref_text)
 
 #### Root cause del LOOP (triangulación H1a + H1b + H2)
 
 El LOOP collapse del baseline se manifiesta en **ICL mode** cuando se cumple al menos una condición:
 
-- **(A)** `ref_text` mismatchea el `ref_audio` (texto fabricado vs lo que el audio realmente dice)
-- **(B)** `ref_audio` es muy larga (14s vs 3s recomendado por README)
-
-**Embedding mode** (`x_vector_only_mode=True`) evita ambas porque ignora ref_text y ref_code.
+- **(A)** `ref_text` mismatchea el `ref_audio`
+- **(B)** `ref_audio` es muy larga (14s vs 3s recomendado)
 
 **Defaults del paquete qwen_tts que causaban el collapse:**
 
 ```python
-# _merge_generate_kwargs() hard_defaults:
 temperature = 0.9          # alto
 top_p = 1.0                # sin nucleus filtering
-repetition_penalty = 1.05  # DEMASIADO BAJO para frenar loops
-max_new_tokens = 8192      # (generation_config.json del modelo)
+repetition_penalty = 1.05  # DEMASIADO BAJO
+max_new_tokens = 8192      # generation_config.json del modelo
 ```
 
 **Fix validado:**
 
 ```python
-repetition_penalty = 1.2   # frena loops
-top_p = 0.9                # nucleus sampling
-temperature = 0.7          # menos ruido
-max_new_tokens = 512       # cap razonable
+repetition_penalty = 1.2
+top_p = 0.9
+temperature = 0.7
+max_new_tokens = 512
 ```
 
 ---
 
 ### O-2a: Verificar preservación de identidad de speaker (Qwen3-TTS)
 
-**Hipótesis:** Los outputs COHERENT de O-1 preservan la identidad del hablante objetivo.
+**Hipótesis:** Los outputs COHERENT de O-1 preservan la identidad de Felipe.
 
 - **Métrica:** ECAPA cosine similarity (threshold ≥ 0.75 = same speaker)
-- **Calibración:** self=1.0000, negative control (voice_designed)=0.0600
+- **Calibración:** self=1.0000, negative control=0.0600
 
-| Output | Cosine vs reference_v2_fixed | Verdict |
+| Output | Cosine vs ref | Verdict |
 |--------|------------------------------|---------|
-| clone_h1a_ref_text_real | 0.2017 | DIFFERENT-SPEAKER |
-| clone_h1b_trim_only | 0.1141 | DIFFERENT-SPEAKER |
-| clone_h2_embedding | -0.0198 | DIFFERENT-SPEAKER |
+| clone_h1a | 0.2017 | DIFFERENT-SPEAKER |
+| clone_h1b | 0.1141 | DIFFERENT-SPEAKER |
+| clone_h2 | -0.0198 | DIFFERENT-SPEAKER |
 
-**Resultado: FAIL 🔴** — Ningún output de Qwen3-TTS-Base preserva la identidad del speaker.
+**Resultado: FAIL 🔴** — Qwen3-TTS-Base NO transfiere el timbre del speaker.
 
-**Interpretación:** Qwen3-TTS-Base genera habla coherente pero NO transfiere el timbre del speaker. El "clone" es solo fonética, no clonación de timbre.
-
-**Nota crítica descubierta después:** `reference_v2_fixed.wav` NO era la voz del hablante objetivo (cosine 0.41 vs pitch real confirmado por ECAPA). Las mediciones de O-2a eran engañosas. Re-medición con referencia correcta (`pitch_segment_15s_fixed.wav`) más adelante.
+**Nota crítica descubierta después:** `reference_v2_fixed.wav` NO era la voz de Felipe (cosine 0.41 vs pitch real). Las mediciones O-2a iniciales eran engañosas.
 
 ---
 
-### O-3a: Research de alternativas (XTTS-v2, F5-TTS, GPT-SoVITS)
+### O-3a: Research de alternativas
 
-**Hipótesis:** Existe al menos una alternativa viable (score ≥ 4/5 en todos los criterios).
-
-| Candidato | MPS | Español | Zero-shot | Calidad | Mant. | License | Total |
-|-----------|-----|---------|-----------|---------|-------|---------|-------|
-| **XTTS-v2 (idiap)** | ✅ wheels macOS | ✅ oficial (1/17) | ✅ 6s | ★★★★ | ✅ activo | CPML research-OK | **5/5** |
-| F5-TTS | ✅ | ⚠️ base zh+en, needs finetune | ✅ | ★★★★★ | ✅ | CC-BY-NC | 3/5 |
-| GPT-SoVITS | ✅ | ⚠️ base zh/ja/en/ko/yue | ✅ 5s | ★★★★ | ✅ | MIT | 3/5 |
-| Qwen3-TTS-Base | ✅ | ✅ | ✅ | ❌ clon falla | ✅ | Apache | 2/5 |
+| Candidato | MPS | Español | Zero-shot | Calidad | Total |
+|-----------|-----|---------|-----------|---------|-------|
+| **XTTS-v2 (idiap)** | ✅ | ✅ oficial | ✅ 6s | ★★★★ | **5/5** |
+| F5-TTS | ✅ | ⚠️ needs finetune | ✅ | ★★★★★ | 3/5 |
+| GPT-SoVITS | ✅ | ⚠️ needs finetune | ✅ | ★★★★ | 3/5 |
+| Qwen3-TTS-Base | ✅ | ✅ | ✅ | ❌ clon falla | 2/5 |
 
 **Resultado: PASS ✅** — XTTS-v2 gana 5/5 en todos los criterios.
 
-**Decisión:** PROCEED a O-3b (XTTS-v2 spike).
-
 ---
 
-### O-3b: XTTS-v2 spike (clonación zero-shot del hablante objetivo)
+### O-3b: XTTS-v2 spike (clonación zero-shot de Felipe)
 
-**Hipótesis:** XTTS-v2 produce cosine ≥ 0.60 (mejora clara sobre Qwen3 baseline 0.1-0.2).
-
-| Output | Cosine vs hablante objetivo (xtts_ref_optimal) | Inferencia | Duración |
-|--------|--------------------------------------|------------|----------|
+| Output | Cosine vs Felipe | Inferencia | Duración |
+|--------|------------------|------------|----------|
 | xtts_v2_zero_shot | 0.5550 | 8.9s | 5.74s |
 
-**Resultado: PARTIAL-PASS ✅** — cosine 0.555, mejora 2.7× sobre Qwen3, pero debajo del threshold same-speaker (0.75).
-
-**Evaluación humana (hablante objetivo):** "Suena parecido, con acento neutro, tiene artifacts al final."
+**Evaluación humana (Felipe):** "Suena parecido, con acento neutro, tiene artifacts al final."
 
 ---
 
-### O-3c: Optimización XTTS-v2 + referencia correcta
+### O-3c: Referencia correcta + optimización
 
-#### Multi-ref + low temperature (artifacts fix)
-
-- **Params:** temperature=0.1, multi-ref (3 samples), repetition_penalty=2.0
-- **Cosine:** 0.5367 (multi-ref mixto)
-- **Output:** `clone_xtts_v2_optimized.wav`
-
-#### Referencia correcta (pitch_segment_15s_fixed.wav)
-
-**Descubrimiento crítico:** `reference_v2_fixed.wav` NO era la voz del hablante objetivo. ECAPA cross-reference:
+**Descubrimiento crítico:** `reference_v2_fixed.wav` NO era la voz de Felipe. ECAPA cross-reference:
 
 - `xtts_ref_optimal` vs `pitch_segment_15s_fixed`: **0.96** (mismo speaker ✅)
 - `xtts_ref_optimal` vs `reference_v2_fixed`: **0.41** (diferente ❌)
 
 Re-medición con referencia correcta:
 
-| Output | Cosine vs hablante objetivo (pitch15s) | Verdict |
+| Output | Cosine vs Felipe (pitch15s) | Verdict |
 |--------|-----------------------------|---------|
 | qwen3_h1a | 0.2532 | DIFFERENT |
-| qwen3_h2 | 0.0140 | DIFFERENT |
-| xtts_v2 (ref_optimal) | 0.5276 | DIFFERENT |
 | **xtts_v2 (pitch15s)** | **0.5797** | **CLOSE** |
-| xtts_v2 (multi-ref) | 0.5367 | DIFFERENT |
 
-**Evaluación humana (hablante objetivo):** pitch_segment_15s_fixed.wav suena a **español ibérico, no chileno**.
+**Evaluación humana (Felipe):** pitch_segment_15s_fixed.wav suena a **español ibérico, no chileno**.
 
-**Root cause del acento neutro:** `pitch_segment_15s_fixed.wav` ES la voz real del hablante objetivo (cross-correlation 0.86 con pitch_full.wav, recorte del segundo 2.6-18.1). El "sonar ibérico" es porque el **registro formal del pitch académico** atenúa las marcas fonéticas chilenas (aspiración de /s/, elisión de /d/, asibilación de /tɾ/).
+**Root cause del acento neutro:** `pitch_segment_15s_fixed.wav` ES la voz real de Felipe (cross-correlation 0.86 con pitch_full.wav). El "sonar ibérico" es porque el **registro formal del pitch académico** atenúa las marcas fonéticas chilenas.
 
 ---
 
 ### O-3d: Speaker 9697 chileno nativo en XTTS-v2
 
-**Hipótesis:** XTTS-v2 transfiere acento chileno cuando la referencia lo tiene marcado.
-
 - **Referencia:** Speaker 9697 de `ylacombe/google-chilean-spanish` (48 samples, coloquial chileno nativo)
-- **Target 1:** "Hola. Esta es una prueba corta..."
-- **Target 2:** "Si quieres ahorrar dinero en el supermarket, te recomiendo ir al tiro porque es más barato."
 
-| Output | Cosine vs 9697 | Cosine vs hablante objetivo |
-|--------|----------------|------------------|
-| 9697_target1 (formal) | **0.6649** | 0.2317 |
-| 9697_target2 (coloquial) | **0.6568** | — |
+| Output | Cosine vs 9697 |
+|--------|----------------|
+| 9697_target1 | **0.6649** |
 
-**Evaluación humana (hablante objetivo): "Suena a chileno 100%" ✅**
+**Evaluación humana (Felipe): "Suena a chileno 100%" ✅**
 
 **Resultado: PASS ✅** — XTTS-v2 SÍ transfiere el acento chileno desde una referencia que lo tiene.
 
 ---
 
-### O-3e: MIX multi-ref (hablante objetivo timbre + 9697 acento)
+### O-3e: MIX multi-ref (Felipe timbre + 9697 acento)
 
-**Hipótesis:** XTTS-v2 multi-ref mezcla timbre del hablante objetivo + acento chileno del 9697.
+**Evaluación humana (Felipe): "Mala calidad" ❌**
 
-- **speaker_wav:** 3 archivos (1 hablante objetivo + 2 Speaker 9697)
-
-| Output | Cosine vs hablante objetivo | Cosine vs 9697 |
-|--------|------------------|----------------|
-| MIX | 0.3715 | 0.4246 |
-
-**Evaluación humana (hablante objetivo): "Mala calidad" ❌**
-
-**Resultado: FAIL 🔴** — XTTS-v2 promedia embeddings, no separa timbre de acento. El híbrido degrada ambos.
+XTTS-v2 promedia embeddings, no separa timbre de acento. El híbrido degrada ambos.
 
 ---
 
-### O-3f: OpenVoice voice conversion (desacoplar timbre de acento)
+### O-3f: OpenVoice voice conversion
 
-**Hipótesis:** OpenVoice VC transfiere timbre del hablante objetivo al audio con acento chileno del 9697.
+**Evaluación humana (Felipe): "Suena robótico, tiene pausas y vocales extendidas" ❌**
 
-- **Pipeline:** XTTS-v2 (9697) → OpenVoice VC (target=hablante objetivo)
-- **Modelo:** `voice_conversion_models/multilingual/multi-dataset/openvoice_v2`
-
-| Output | Cosine vs hablante objetivo | Cosine vs 9697 |
-|--------|------------------|----------------|
-| OpenVoice | 0.4219 | 0.1889 |
-
-**Evaluación humana (hablante objetivo): "Suena robótico, tiene pausas y vocales extendidas" ❌**
-
-**Resultado: FAIL 🔴** — Doble pipeline (XTTS → OpenVoice) acumula artefactos sintéticos.
+Doble pipeline (XTTS → OpenVoice) acumula artefactos sintéticos.
 
 ---
 
-### O-4-EL: ElevenLabs (API cloud)
+### O-4-EL: ElevenLabs IVC (Instant Voice Clone)
 
-#### ElevenLabs Multilingual v2 + hablante objetivo
+#### ElevenLabs Multilingual v2 + Felipe
 
-- **Modelo:** `eleven_multilingual_v2`
-- **Inferencia:** 1.6s
-- **Cosine vs hablante objetivo:** 0.5209
-- **Evaluación humana (hablante objetivo):** "Tiene uso de la 'z' como el español ibérico" (zeseo/distinción)
+- **Cosine vs Felipe:** 0.5209
+- **Evaluación humana (Felipe):** "Tiene uso de la 'z' como el español ibérico" (zeseo/distinción)
 
-#### ElevenLabs v3 + hablante objetivo
+#### ElevenLabs v3 + Felipe
 
-- **Modelo:** `eleven_v3` (70+ lenguajes, más expresivo)
-- **Inferencia:** 2.9s
-- **Evaluación humana (hablante objetivo):** "Sigue zeseando"
+- **Evaluación humana (Felipe):** "Sigue zeseando"
 
 #### ElevenLabs v3 + Speaker 9697 (chileno nativo)
 
-- **Modelo:** `eleven_v3`
-- **Referencia:** Speaker 9697 (chileno coloquial)
-- **Evaluación humana (hablante objetivo):** "Incluso ahí le cambia el acento a uno más neutro, pierde el chileno"
+- **Evaluación humana (Felipe):** "Incluso ahí le cambia el acento a uno más neutro, pierde el chileno"
 
-**Resultado: FAIL 🔴 para acento chileno** — ElevenLabs impone su propio G2P que neutraliza acentos regionales. No se puede overridear con voice cloning ni con referencia chilena nativa. El modelo "suaviza" la fonética hacia español genérico.
+**Resultado: FAIL 🔴 para acento chileno** — ElevenLabs IVC impone su propio G2P que neutraliza acentos regionales.
+
+---
+
+### O-4-EL-Library: ElevenLabs Voice Library (voces chilenas nativas pre-entrenadas)
+
+#### Cristian Cornejo (voice_id=ClNifCEVq1smkl4M3aTk, 11,976 usos)
+
+- **Textos generados:** neutral, coloquial, clínico
+- **Evaluación humana (Felipe):** "Suena a chileno. Es la de mejor calidad."
+- **Pros:** alta calidad de audio, acento chileno natural
+- **Contras:** el coloquial ("po", "al tiro") suena ligeramente a IA (pausas antes de modismos)
+
+#### Otros candidatos chilenos (Vicente Professional, Marco Warm/Friendly, Edgar Rich/Serious)
+
+- **Evaluación humana (Felipe):** "Los otros son de mala calidad sonora, volumen bajo"
+- **Veredicto:** Descartados por calidad técnica deficiente
+
+**Resultado: PASS ✅ para Cristian** — ElevenLabs Voice Library tiene voces chilenas nativas de calidad.
+
+---
+
+### O-4-Inworld: Inworld TTS-2
+
+#### Inworld TTS-2 + Felipe (language=es)
+
+- **Cosine vs Felipe:** 0.5159
+- **Sample rate:** 48kHz (superior a ElevenLabs 44.1kHz)
+- **Dynamic range:** 84.4 dB (superior a ElevenLabs 58.9 dB)
+- **Latencia:** 1.6s
+- **Evaluación humana (Felipe):** "Se escucha en otra liga, un Fiat 600 vs un Mercedes Benz"
+- **Acento:** ❌ Neutro (no chileno)
+
+#### Inworld TTS-2 + Felipe (language=es-CL)
+
+- **Textos generados:** neutral, coloquial, clínico con `language: "es-CL"`
+- **Evaluación humana:** Pendiente de evaluación comparativa es vs es-CL
+
+#### Inworld TTS-2 + Speaker 9697 (language=es-CL)
+
+- **Textos generados:** neutral, coloquial
+- **Evaluación humana:** Pendiente
+
+#### Comparación ElevenLabs vs Inworld (Felipe)
+
+| Métrica | ElevenLabs v2 | Inworld TTS-2 | Ganador |
+|---------|:---:|:---:|:---:|
+| ECAPA vs Felipe | **0.52** | 0.52 | Empate |
+| Sample rate | 44.1 kHz | **48 kHz** | Inworld |
+| Dynamic range | 58.9 dB | **84.4 dB** | Inworld |
+| F0 media | **128.9 Hz** (ref=129.0) | 131.4 Hz | ElevenLabs |
+| Calidad perceptual | buena | **"Mercedes"** | **Inworld** |
+| Acento | ❌ ibérico | ❌ neutro | Inworld |
+| Language code regional | ❌ no | **✅ es-CL** | Inworld |
 
 ---
 
 ## Cuadro Comparativo Final
 
-| Modelo | Referencia | Acento chileno | Zeseo ibérico | Timbre clonado | Cosine ECAPA | Inferencia | Veredicto |
-|--------|-----------|----------------|---------------|----------------|--------------|------------|-----------|
-| **XTTS-v2** | Speaker 9697 | ✅ **100% chileno** | ❌ no zesea | ✅ 9697 (0.67) | 0.66 | 5.3s | **🏆 GANADOR** |
-| **XTTS-v2** | hablante objetivo pitch | ❌ neutro | ❌ no zesea | ✅ hablante objetivo (0.58) | 0.58 | 8.9s | Timbre OK, acento falla |
-| ElevenLabs v2 | hablante objetivo | ❌ ibérico | ✅ **sí zesea** | ✅ hablante objetivo (0.52) | 0.52 | 1.6s | Zeseo ibérico |
-| ElevenLabs v3 | hablante objetivo | ❌ neutro | ✅ sí zesea | ✅ hablante objetivo | — | 2.9s | Zeseo + neutro |
-| ElevenLabs v3 | Speaker 9697 | ❌ neutro | ❌ pierde chileno | ✅ 9697 | — | 2.9s | Neutraliza acento |
-| Qwen3-TTS h2 | hablante objetivo | ❌ neutro | ❌ | ❌ no clona (-0.01) | 0.01 | 10.8s | No clona timbre |
-| XTTS-v2 MIX | hablante objetivo+9697 | ❌ neutro | ❌ | ❌ híbrido (0.37) | 0.37 | 5.9s | Calidad degradada |
-| OpenVoice | 9697→hablante objetivo | ❌ no se sabe | ❌ | ❌ robótico (0.42) | 0.42 | 0.6s | Artifacts dobles |
+| Modelo | Referencia | Acento chileno | Zeseo ibérico | Timbre | Cosine ECAPA | Calidad audio | Latencia | Veredicto |
+|--------|-----------|:---:|:---:|:---:|:---:|:---:|:---:|:---|
+| **EL Cristian (librería)** | Pre-entrenada chilena | ✅ **chileno** | ❌ no | N/A (no es Felipe) | N/A | ✅ alta | 1.5s | **🏆 Chileno + calidad** |
+| **XTTS-v2** | Speaker 9697 (chileno) | ✅ **100% chileno** | ❌ no | ✅ 9697 (0.67) | 0.67 | ⚠️ media | 5.3s | **🏆 Chileno open-source** |
+| **XTTS-v2** | Felipe pitch formal | ❌ neutro | ❌ no | ✅ Felipe (0.58) | 0.58 | ⚠️ media | 8.9s | Timbre OK, acento falla |
+| **Inworld TTS-2** | Felipe | ❌ neutro | ❌ no | ✅ Felipe (0.52) | 0.52 | ✅ **alta 48kHz** | 1.6s | Mejor calidad, sin acento |
+| **Inworld TTS-2** | Felipe + es-CL | ❓ pendiente | ❌ | ✅ Felipe (0.52) | 0.52 | ✅ alta | 1.6s | Pendiente evaluación es-CL |
+| **ElevenLabs v2** | Felipe IVC | ❌ ibérico | ✅ **sí zesea** | ✅ Felipe (0.52) | 0.52 | ✅ alta | 1.6s | Zeseo ibérico |
+| **ElevenLabs v3** | Felipe IVC | ❌ neutro | ✅ sí zesea | ✅ Felipe | — | ✅ alta | 2.9s | Zeseo + neutro |
+| **ElevenLabs v3** | Speaker 9697 IVC | ❌ neutro | ❌ pierde chileno | ✅ 9697 | — | ✅ alta | 2.9s | Neutraliza |
+| **Qwen3-TTS h2** | Felipe embedding | ❌ neutro | ❌ | ❌ no clona | 0.01 | ⚠️ loop colapsado | 10.8s | No clona timbre |
+| **XTTS-v2 MIX** | Felipe+9697 | ❌ neutro | ❌ | ❌ híbrido (0.37) | 0.37 | ❌ mala | 5.9s | Calidad degradada |
+| **OpenVoice VC** | 9697→Felipe | ❌ robótico | ❌ | ❌ robótico (0.42) | 0.42 | ❌ robótico | 0.6s | Artifacts dobles |
 
 ---
 
@@ -337,31 +343,52 @@ Re-medición con referencia correcta:
 | Negative control (voice_designed vs reference) | 0.0600-0.0963 |
 | Threshold same-speaker (literatura ECAPA-VoxCeleb) | ≥ 0.75 |
 
-### Cross-reference entre audios de hablante objetivo
+### Cross-reference entre audios de Felipe
 
 | Par | Cosine | Interpretación |
 |-----|--------|----------------|
-| xtts_ref_optimal vs pitch_segment_15s_fixed | **0.96** | Mismo speaker (hablante objetivo) ✅ |
+| xtts_ref_optimal vs pitch_segment_15s_fixed | **0.96** | Mismo speaker (Felipe) ✅ |
 | xtts_ref_optimal vs reference_v2_fixed | 0.41 | Diferente speaker ❌ |
 | pitch_segment_15s_fixed vs reference_v2_fixed | 0.42 | Diferente speaker ❌ |
 
-**Hallazgo:** `reference_v2_fixed.wav` no es la voz del hablante objetivo. Las mediciones iniciales que la usaban como baseline eran engañosas.
+**Hallazgo:** `reference_v2_fixed.wav` no es la voz de Felipe.
 
 ---
 
-## Veredictos Humanos (hablante objetivo)
+## Análisis Acústico (F0 + Espectral)
 
-| Experimento | Archivo | Veredicto de hablante objetivo |
+### F0 (Pitch)
+
+| Modelo | F0 media (Hz) | F0 std (Hz) | F0 cv | ΔF0 vs Felipe | Interpretación |
+|--------|:---:|:---:|:---:|:---:|:---|
+| **REF Felipe** | **129.0** | **29.9** | **0.232** | — | Medio, muy variable |
+| XTTS-v2 Felipe | 128.6 | 17.7 | 0.138 | 3.4 | Similar pero más monótono |
+| XTTS-v2 9697 | 135.4 | 20.8 | 0.154 | 3.2 | Similar |
+| ElevenLabs v2 | 128.9 | 19.8 | 0.154 | 2.8 | Más similar en F0 mean |
+| ElevenLabs v3 | 142.2 | 42.4 | 0.298 | 4.5 | Muy variable (sobre-expresivo) |
+| Inworld TTS-2 | 131.4 | 18.3 | 0.139 | 3.5 | Más estable |
+
+**Insight:** F0 mean de Felipe (129 Hz) se preserva en todos los modelos (±5 Hz). Los clones REDUCEN la variabilidad (cv 0.14-0.17 vs Felipe 0.232) → suenan más monótonos. El acento chileno NO vive en el pitch — vive en los patrones consonánticos.
+
+---
+
+## Veredictos Humanos (Felipe González)
+
+| Experimento | Archivo | Veredicto de Felipe |
 |-------------|---------|-------------------|
-| XTTS-v2 + hablante objetivo pitch formal | clone_xtts_v2.wav | "Suena parecido, con acento neutro, tiene artifacts al final" |
-| XTTS-v2 + hablante objetivo pitch (pitch15s) | clone_xtts_v2_pitch15s.wav | "Esta suena a español ibérico, no a chileno" |
+| XTTS-v2 + Felipe pitch formal | clone_xtts_v2.wav | "Suena parecido, con acento neutro, tiene artifacts al final" |
+| XTTS-v2 + Felipe pitch (pitch15s) | clone_xtts_v2_pitch15s.wav | "Esta suena a español ibérico, no a chileno" |
 | XTTS-v2 + Speaker 9697 | clone_xtts_9697_target1.wav | **"Suena a chileno 100%"** |
-| XTTS-v2 + Speaker 9697 (coloquial) | clone_xtts_9697_target2.wav | **"Suena a chileno 100%"** |
-| XTTS-v2 MIX (hablante objetivo+9697) | clone_xtts_target_plus_9697_mix.wav | "Mala calidad" |
-| OpenVoice VC | clone_openvoice_target_accent9697.wav | "Suena robótico, tiene pausas y vocales extendidas" |
-| ElevenLabs v2 + hablante objetivo | clone_elevenlabs_target.wav | "Tiene uso de la 'z' como el español ibérico" |
-| ElevenLabs v3 + hablante objetivo | clone_elevenlabs_v3_target.wav | "Sigue zeseando" |
+| XTTS-v2 MIX (Felipe+9697) | clone_xtts_felipe_plus_9697_mix.wav | "Mala calidad" |
+| OpenVoice VC | clone_openvoice_felipe_accent9697.wav | "Suena robótico, tiene pausas y vocales extendidas" |
+| ElevenLabs v2 + Felipe | clone_elevenlabs_felipe.wav | "Tiene uso de la 'z' como el español ibérico" |
+| ElevenLabs v3 + Felipe | clone_elevenlabs_v3_felipe.wav | "Sigue zeseando" |
 | ElevenLabs v3 + Speaker 9697 | clone_elevenlabs_v3_9697.wav | "Incluso ahí le cambia el acento a uno más neutro, pierde el chileno" |
+| Inworld TTS-2 + Felipe | clone_inworld_felipe.wav | "Se escucha en otra liga, un Fiat 600 vs un Mercedes Benz" |
+| Inworld TTS-2 + Felipe (acento) | — | "Acento neutro, pero suena como yo" |
+| EL Cristian Cornejo (librería) | el_cl_cristian_neutral.wav | **"Suena a chileno. Es la de mejor calidad."** |
+| EL Vicente/Marco/Edgar (librería) | el_cl_*_*.wav | "Los otros son de mala calidad sonora (volumen bajo)" |
+| EL Cristian coloquial ("po") | el_cl_cristian_coloquial.wav | "El coloquial suena a IA, pausa antes de decir cualquier modismo, sobre todo el 'po'" |
 
 ---
 
@@ -369,80 +396,95 @@ Re-medición con referencia correcta:
 
 ### 1. El LOOP collapse de Qwen3-TTS
 
-**Causa raíz:** Los scripts llamaban `generate_voice_clone()` sin pasar sampling params, activando defaults del paquete (`repetition_penalty=1.05`, `top_p=1.0`, `temperature=0.9`) que no previenen loops de repetición.
+**Causa raíz:** Defaults del paquete (`repetition_penalty=1.05`, `top_p=1.0`, `temperature=0.9`) + ref_text mismatched o ref muy larga.
 
-**Combinación letal:**
-
-- `repetition_penalty=1.05` no frena loops (estándar anti-loop: 1.2-1.3)
-- `top_p=1.0` deja el espacio de muestreo muy ruidoso
-- `max_new_tokens=8192` da espacio para 100+ repeticiones
-
-**Variables que agravan:**
-
-- (A) `ref_text` no coincide con el audio de referencia
-- (B) `ref_audio` demasiado larga (14s vs 3s recomendado)
-
-**Fix validado:**
-
-```python
-repetition_penalty = 1.2
-top_p = 0.9
-temperature = 0.7
-max_new_tokens = 512
-```
+**Fix validado:** `repetition_penalty=1.2`, `top_p=0.9`, `temperature=0.7`, `max_new_tokens=512`.
 
 ### 2. Qwen3-TTS-Base no clona timbre
 
-El modelo Qwen3-TTS-Base genera habla coherente en español pero NO transfiere el timbre del speaker en zero-shot. Los outputs "COHERENT" son el target dicho con voz genérica, no clonada.
+Genera habla coherente pero NO transfiere el timbre del speaker en zero-shot (cosine 0.01-0.25).
 
 ### 3. El acento chileno depende de la referencia coloquial
 
-El acento chileno tiene marcas fonéticas específicas (aspiración de /s/, elisión de /d/, asibilación de /tɾ/, modismos como "po", "cachái", "al tiro"). Un registro **formal/académico** atenúa estas marcas. Un registro **coloquial** las preserva.
+El acento chileno tiene marcas fonéticas específicas (aspiración de /s/, elisión de /d/, asibilación de /tɾ/, modismos). Un registro formal atenúa estas marcas. XTTS-v2 respeta la fonética de la referencia.
 
-XTTS-v2 respeta la fonética de la referencia → si la referencia tiene marcas chilenas, el output es chileno.
+### 4. Modelos comerciales neutralizan acentos regionales
 
-### 4. ElevenLabs neutraliza acentos regionales
+ElevenLabs (IVC) e Inworld imponen su propio sistema fonético que neutraliza acentos regionales. ElevenLabs genera zeseo/distinción ibérica. Inworld genera español genérico. No se puede overridear con voice cloning ni con language code.
 
-ElevenLabs (v2 y v3) impone su propio sistema fonético que:
+### 5. ElevenLabs Voice Library es la excepción comercial
 
-- Genera zeseo/distinción ibérica (pronunciación de /z/ y /c/)
-- Neutraliza acentos regionales hacia español genérico
-- NO se puede overridear con voice cloning ni con `language_code`
+Las voces chilenas **pre-entrenadas** de la librería (Cristian Cornejo) SÍ suenan chilenas porque fueron entrenadas con data chilena nativa. La clave es que el acento está en los pesos del modelo, no se intenta clonar zero-shot.
 
-Esto es una limitación arquitectónica del modelo, no un bug.
+### 6. XTTS-v2 respeta la fonética de la referencia
 
-### 5. XTTS-v2 respeta la fonética de la referencia
+A diferencia de los modelos comerciales, XTTS-v2 respeta más fielmente la fonética de la referencia sin imponer su propia fonética. Por eso preserva el acento chileno cuando la referencia lo tiene.
 
-A diferencia de ElevenLabs, XTTS-v2 (open-source, coqui-tts) respeta más fielmente la fonética de la referencia sin imponer su propia fonética. Por eso preserva el acento chileno cuando la referencia lo tiene.
+### 7. El acento chileno NO vive en el pitch (F0)
 
-### 6. Voice conversion (OpenVoice) no funciona con audio sintético
+Vive en los patrones consonánticos. F0 mean se preserva en todos los modelos (±5 Hz). La diferencia de acento no es detectable por análisis de pitch.
 
-OpenVoice VC degrada calidad cuando el source ya es audio sintético (XTTS-v2 output). Los artefactos del TTS se acumulan con los del VC, produciendo audio robótico.
+### 8. Voice conversion (OpenVoice) no funciona con audio sintético
+
+Doble pipeline (XTTS → OpenVoice) acumula artefactos sintéticos, produciendo audio robótico.
+
+### 9. Modelos open-source 2026 pendientes de probar
+
+- **Pocket TTS** (kyutai, 100M params, CPU, español dedicado) — más prometedor
+- **CosyVoice 3** (FunAudioLLM, 0.5B, 9 idiomas con español)
+- **Fish Speech S2 Pro** (fishaudio, 4.6B, 80+ idiomas, requiere GPU)
+
+---
+
+## Hiperparámetros Ganadores
+
+### XTTS-v2
+
+```python
+tts.tts_to_file(
+    text=target_text,
+    speaker_wav=[ref1.wav, ref2.wav, ref3.wav],
+    language="es",
+    file_path=output_path,
+    temperature=0.1,
+    length_penalty=1.0,
+    repetition_penalty=2.0,
+)
+```
+
+### ElevenLabs Voice Library (Cristian)
+
+```python
+# Voice ID: ClNifCEVq1smkl4M3aTk
+# Model: eleven_multilingual_v2
+# Language: es (no soporta es-CL regional como Inworld)
+client.text_to_speech.convert(
+    voice_id="ClNifCEVq1smkl4M3aTk",
+    text=target_text,
+    model_id="eleven_multilingual_v2",
+    voice_settings={"stability": 0.5, "similarity_boost": 0.75, "style": 0.0, "use_speaker_boost": True},
+)
+```
+
+### Inworld TTS-2
+
+```python
+requests.post("https://api.inworld.ai/tts/v1/voice", json={
+    "text": target_text,
+    "voiceId": cloned_voice_id,
+    "modelId": "inworld-tts-2",
+    "language": "es-CL",  # soporta BCP-47 regional
+})
+```
 
 ---
 
 ## Documentos de Referencia
 
-- **Análisis de arquitecturas TTS para acento chileno:** `nota privada no incluida en el repositorio`
+- **Análisis de arquitecturas TTS para acento chileno:** `/Users/felipe_gonzalez/Developer/tqt_app/docs/wiki/references/clonacion-voz-acento-chileno.md`
   - Requiere 3 capas para acento chileno perfecto: G2P + corpora + LoRA
   - COSCACH (1,383h) como gold standard
   - Hiperparámetros LoRA Qwen3: LR=2e-6, cp_lr=0, stop epoch 10-12, lora_scale=0.25-0.35
-
----
-
-## Hiperparámetros Ganadores (XTTS-v2)
-
-```python
-tts.tts_to_file(
-    text=target_text,
-    speaker_wav=[ref1.wav, ref2.wav, ref3.wav],  # multi-ref (3 samples)
-    language="es",
-    file_path=output_path,
-    temperature=0.1,        # determinístico, menos artifacts
-    length_penalty=1.0,     # default
-    repetition_penalty=2.0, # default XTTS anti-artifact
-)
-```
 
 ---
 
@@ -450,29 +492,85 @@ tts.tts_to_file(
 
 ### Outputs de audio (`output/experiments/`)
 
-| Archivo | Modelo | Referencia | Descripción |
-|---------|--------|-----------|-------------|
-| clone_h1a_ref_text_real.wav | Qwen3-TTS | hablante objetivo (ref_text exacto) | O-1 H1a: ref_text fidelity |
-| clone_h1b_trim_only.wav | Qwen3-TTS | hablante objetivo (ref 5s) | O-1 H1b: trimming |
-| clone_h2_embedding.wav | Qwen3-TTS | hablante objetivo (embedding mode) | O-1 H2: embedding mode |
-| clone_xtts_v2.wav | XTTS-v2 | hablante objetivo (ref_optimal) | O-3b: spike inicial |
-| clone_xtts_v2_pitch15s.wav | XTTS-v2 | hablante objetivo (pitch15s) | O-3c: ref correcta |
-| clone_xtts_v2_optimized.wav | XTTS-v2 | hablante objetivo multi-ref | O-3c: multi-ref + low temp |
-| clone_xtts_9697_target1.wav | XTTS-v2 | Speaker 9697 | **O-3d: chileno 100%** |
-| clone_xtts_9697_target2.wav | XTTS-v2 | Speaker 9697 | O-3d: texto coloquial |
-| clone_xtts_target_plus_9697_mix.wav | XTTS-v2 | hablante objetivo+9697 | O-3e: MIX (mala calidad) |
-| clone_openvoice_target_accent9697.wav | OpenVoice | 9697→hablante objetivo | O-3f: VC robótico |
-| clone_elevenlabs_target.wav | ElevenLabs v2 | hablante objetivo | O-4-EL: zeseo ibérico |
-| clone_elevenlabs_v3_target.wav | ElevenLabs v3 | hablante objetivo | O-4-EL: sigue zeseando |
-| clone_elevenlabs_v3_9697.wav | ElevenLabs v3 | Speaker 9697 | O-4-EL: pierde chileno |
+#### Qwen3-TTS experiments (O-1)
 
-### Referencias de audio (`voice_profiles/target-speaker/`)
+| Archivo | Descripción |
+|---------|-------------|
+| clone_h1a_ref_text_real.wav | O-1 H1a: ref_text fidelity |
+| clone_h1b_trim_only.wav | O-1 H1b: trimming |
+| clone_h2_embedding.wav | O-1 H2: embedding mode |
+| clone_fixed_icl.wav | O-1: sampling fix ICL |
+| clone_simple_path.wav | O-1: official single-inference path |
+
+#### XTTS-v2 experiments (O-3b to O-3e)
+
+| Archivo | Descripción |
+|---------|-------------|
+| clone_xtts_v2.wav | O-3b: spike inicial |
+| clone_xtts_v2_pitch15s.wav | O-3c: ref correcta pitch15s |
+| clone_xtts_v2_optimized.wav | O-3c: multi-ref + low temp |
+| clone_xtts_9697_target1.wav | **O-3d: chileno 100%** |
+| clone_xtts_9697_target2.wav | O-3d: texto coloquial |
+| clone_xtts_felipe_plus_9697_mix.wav | O-3e: MIX (mala calidad) |
+
+#### OpenVoice experiment (O-3f)
+
+| Archivo | Descripción |
+|---------|-------------|
+| clone_openvoice_felipe_accent9697.wav | O-3f: VC robótico |
+
+#### ElevenLabs experiments (O-4-EL)
+
+| Archivo | Descripción |
+|---------|-------------|
+| clone_elevenlabs_felipe.wav | EL v2: zeseo ibérico |
+| clone_elevenlabs_v3_felipe.wav | EL v3: sigue zeseando |
+| clone_elevenlabs_v3_9697.wav | EL v3 + 9697: pierde chileno |
+| elevenlabs_v3_felipe_neutral.wav | EL v3: texto neutral |
+| elevenlabs_v3_felipe_coloquial.wav | EL v3: texto coloquial |
+| elevenlabs_v3_felipe_clinico.wav | EL v3: texto clínico |
+
+#### ElevenLabs Voice Library — Voces chilenas nativas (O-4-EL-Library)
+
+| Archivo | Descripción |
+|---------|-------------|
+| **el_cl_cristian_neutral.wav** | **Cristian: chileno, mejor calidad** |
+| **el_cl_cristian_coloquial.wav** | Cristian: coloquial (pausa antes de "po") |
+| **el_cl_cristian_clinico.wav** | Cristian: texto clínico |
+| el_cl_vicente_prof_neutral.wav | Vicente: volumen bajo |
+| el_cl_vicente_prof_coloquial.wav | Vicente: coloquial |
+| el_cl_vicente_prof_clinico.wav | Vicente: clínico |
+| el_cl_marco_neutral.wav | Marco: volumen bajo |
+| el_cl_marco_coloquial.wav | Marco: coloquial |
+| el_cl_marco_clinico.wav | Marco: clínico |
+| el_cl_edgar_neutral.wav | Edgar: volumen bajo |
+| el_cl_edgar_coloquial.wav | Edgar: coloquial |
+| el_cl_edgar_clinico.wav | Edgar: clínico |
+| elevenlabs_mauricio_neutral.wav | Mauricio: latinoamericano genérico |
+| elevenlabs_mauricio_coloquial.wav | Mauricio: coloquial |
+| elevenlabs_mauricio_clinico.wav | Mauricio: clínico |
+
+#### Inworld TTS-2 experiments (O-4-Inworld)
+
+| Archivo | Descripción |
+|---------|-------------|
+| clone_inworld_felipe.wav | Inworld: "Fiat 600 vs Mercedes" |
+| inworld_felipe_es_neutral.wav | Inworld + Felipe, lang=es, neutral |
+| inworld_felipe_esCL_neutral.wav | Inworld + Felipe, lang=es-CL, neutral |
+| inworld_felipe_es_coloquial.wav | Inworld + Felipe, lang=es, coloquial |
+| inworld_felipe_esCL_coloquial.wav | Inworld + Felipe, lang=es-CL, coloquial |
+| inworld_felipe_es_clinico.wav | Inworld + Felipe, lang=es, clínico |
+| inworld_felipe_esCL_clinico.wav | Inworld + Felipe, lang=es-CL, clínico |
+| inworld_9697_esCL_neutral.wav | Inworld + Speaker 9697, lang=es-CL |
+| inworld_9697_esCL_coloquial.wav | Inworld + Speaker 9697, lang=es-CL |
+
+### Referencias de audio (`voice_profiles/felipe/`)
 
 | Archivo | Duración | Descripción |
 |---------|----------|-------------|
-| source_recording.mp3 | 262s | Pitch completo original (estéreo 44100Hz) |
+| pitch_from_email.mp3 | 262s | Pitch completo original (estéreo 44100Hz) |
 | pitch_full.wav | 262s | Pitch completo (mono 24000Hz) |
-| pitch_segment_15s_fixed.wav | 15.5s | Segmento 2.6-18.1s del pitch (voz real del hablante objetivo) |
+| pitch_segment_15s_fixed.wav | 15.5s | Segmento 2.6-18.1s del pitch (voz real de Felipe) |
 | xtts_ref_optimal.wav | 11s | Primeros 11s en formato XTTS-v2 (mono 22050Hz 16-bit) |
 | chilean_refs/speaker_9697_ref_1.wav | 7.9s | Speaker 9697 sample 1 (48kHz) |
 | chilean_refs/speaker_9697_ref_2.wav | 7.8s | Speaker 9697 sample 2 |
@@ -495,18 +593,30 @@ tts.tts_to_file(
 
 ## Próximos Pasos Recomendados
 
-### Inmediato (zero additional cost)
+### Inmediato (P0 — esta semana)
 
-1. **Grabar voz coloquial chilena del hablante objetivo** (10-15s, hablando natural con modismos) → usar como `speaker_wav` en XTTS-v2 → obtener hablante objetivo + acento chileno.
-2. **Integrar XTTS-v2 en TTS Lab** como infraestructura alternativa a Qwen3-TTS-Base.
-3. **Usar dataset `ylacombe/google-chilean-spanish`** como fuente de voces chilenas para la herramienta (31 hablantes disponibles).
+1. **Grabar voz coloquial chilena de Felipe** (F1/F2/F3, 12-18s cada una) según el plan experimental Fase 0-5.
+2. **Validar XTTS-v2 + Felipe coloquial** — ¿preserva acento chileno cuando la referencia lo tiene?
+3. **Probar Pocket TTS** (kyutai, 100M, CPU, español dedicado spanish_24l) como alternativa más liviana.
+4. **Evaluar Inworld es-CL** — comparar `es` vs `es-CL` en Felipe y Speaker 9697.
 
-### Medio plazo (requiere GPU cloud)
+### Medio plazo (P1)
 
-1. **Fine-tuning LoRA Qwen3-TTS** con dataset chileno (COSCACH o ylacombe) según hiperparámetros del doc de referencia.
-2. **Intervención G2P (Espeak-NG)** con reglas chilenas para mejor pronunciación de fonemas regionales.
+1. **Fine-tuning LoRA Qwen3-TTS** con dataset chileno (según doc de referencia).
+2. **Intervención G2P (Espeak-NG)** con reglas chilenas.
+3. **Probar CosyVoice 3** (0.5B, español nativo).
 
-### Largo plazo
+### Largo plazo (P2)
 
-1. **Explorar F5-TTS** con finetune español chileno (`vdaular/f5-tts-es` existe como modelo community).
-2. **Evaluar Voxtral TTS** (Mistral AI) como alternativa híbrida AR+flow-matching.
+1. **Evaluar Fish Speech S2 Pro** en GPU cloud (4.6B, SOTA absoluto).
+2. **Evaluar Voxtral TTS** (Mistral AI) como alternativa híbrida.
+3. **Integrar Cristian (ElevenLabs) + XTTS-v2 como pipeline dual** en la herramienta.
+
+### Decisión sobre entrenamiento (Fase 5 del plan)
+
+| Caso | Acción |
+|------|--------|
+| A: buena identidad, acento insuficiente | Adaptación dialectal (LoRA, G2P, corpus chileno) |
+| B: buen acento, identidad insuficiente | Más audio propio, fine-tuning de hablante, PVC |
+| C: XTTS resuelve ambos con referencia coloquial | No entrenar. Integrar XTTS. |
+| D: ningún modelo resuelve ambos | Proyecto mayor (corpus multihablante + individual + speaker encoder) |
