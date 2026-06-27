@@ -50,7 +50,7 @@ def load_embedding(model: EncoderClassifier, wav_path: str) -> np.ndarray:
         wav = wav.mean(axis=1)
     # ECAPA expects 16kHz; resample with simple linear if needed.
     if sr != 16000:
-        n_out = int(round(len(wav) * 16000 / sr))
+        n_out = round(len(wav) * 16000 / sr)
         indices = np.linspace(0, len(wav) - 1, n_out)
         wav = np.interp(indices, np.arange(len(wav)), wav).astype("float32")
     # speechbrain ECAPA expects shape (batch, time) for 1D conv input.

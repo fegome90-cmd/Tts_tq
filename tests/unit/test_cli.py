@@ -2,6 +2,7 @@
 
 from unittest.mock import Mock, patch
 
+from click import unstyle
 from typer.testing import CliRunner
 
 runner = CliRunner()
@@ -18,22 +19,46 @@ class TestCLICommands:
         assert result.exit_code == 0
 
     def test_clone_help_shows_clone_defaults_and_controls(self):
-        """clone command help should expose Base model and clone controls."""
+        """clone command help should expose Base model and clone controls.
+
+        Rendered under deterministic conditions: color disabled, fixed wide
+        terminal, and ANSI stripped via ``unstyle``. Without this the panel
+        wrapping applied by Typer/Rich depended on the runner's terminal width
+        (80 by default), which truncated long option names like ``--language``
+        differently across local vs CI environments and made the assertion
+        non-deterministic.
+        """
         from tts_lab.cli import app
 
-        result = runner.invoke(app, ["clone", "--help"])
+        result = runner.invoke(
+            app,
+            ["clone", "--help"],
+            color=False,
+            terminal_width=240,
+            env={
+                "NO_COLOR": "1",
+                "TERM": "dumb",
+                "COLUMNS": "240",
+            },
+        )
 
         assert result.exit_code == 0
-        assert "Qwen/Qwen3-TTS-12Hz-" in result.stdout
-        assert "--language" in result.stdout
-        assert "Spanish" in result.stdout
-        assert "--embedding-only" in result.stdout
-        assert "--seed" in result.stdout
-        assert "--temperature" in result.stdout
-        assert "--top-p" in result.stdout
-        assert "--top-k" in result.stdout
-        assert "--repetition-penalty" in result.stdout
-        assert "--max-new-tokens" in result.stdout
+        help_text = unstyle(result.output)
+
+        expected_in_help = (
+            "Qwen/Qwen3-TTS-12Hz-",
+            "--language",
+            "Spanish",
+            "--embedding-only",
+            "--seed",
+            "--temperature",
+            "--top-p",
+            "--top-k",
+            "--repetition-penalty",
+            "--max-new-tokens",
+        )
+        for expected in expected_in_help:
+            assert expected in help_text, f"missing {expected!r} in clone --help"
 
     def test_clone_command_passes_defaults_to_client(self, tmp_path):
         """clone command should pass Base model and ICL Spanish defaults."""

@@ -5,8 +5,16 @@ implementation. Fail-closed sanitizer: only {status, audio_path?, error_class_na
 keys are emitted; NEVER str(error), error body, request text, or secrets.
 """
 
+from typing import cast
+
+import pytest
+
 from tts_lab.application.agent_card import to_agent_card
-from tts_lab.domain.entities import GenerationFailure, GenerationSuccess
+from tts_lab.domain.entities import (
+    GenerationFailure,
+    GenerationResult,
+    GenerationSuccess,
+)
 from tts_lab.domain.exceptions import ModelLoadError
 
 
@@ -79,3 +87,23 @@ class TestToAgentCardFailure:
         for card in (to_agent_card(success), to_agent_card(failure)):
             assert all(isinstance(v, str) for v in card.values())
             assert all(isinstance(k, str) for k in card)
+
+
+class TestToAgentCardFailClosed:
+    """Runtime fail-closed defense for values outside the 2-variant union (R3).
+
+    mypy makes the `match` exhaustive at static-analysis time, but Python does
+    not enforce the GenerationResult contract at runtime. An unexpected object
+    can reach `to_agent_card` via untyped code, a broken mock, deserialization,
+    `Any`, or a future variant added to the union without updating the
+    sanitizer. The function MUST fail closed (raise) rather than fall through
+    the match and implicitly return None, which would contradict both the
+    `dict[str, str]` return annotation and the "fail-closed sanitizer" promise.
+    """
+
+    def test_unsupported_result_fails_closed(self):
+        """Non-variant object MUST raise TypeError, not return None."""
+        unsupported = cast(GenerationResult, object())
+
+        with pytest.raises(TypeError, match="Unsupported generation result"):
+            to_agent_card(unsupported)
