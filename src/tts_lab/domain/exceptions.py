@@ -28,6 +28,17 @@ class AudioFormatError(TTSError):
     pass
 
 
+class AudioStorageError(TTSError):
+    """Disk/IO failure during audio persistence (save_with_hash).
+
+    Wraps OSError so GenerationFailure.error is always a TTSError (mypy-strict)
+    for both the generate-branch (TTSError pass-through) and the
+    save-branch (OSError wrapped via ``AudioStorageError(...) from e``).
+    """
+
+    pass
+
+
 class UnsupportedOperationError(TTSError):
     """A provider cannot honor the requested operation.
 
@@ -57,6 +68,7 @@ class UnsupportedOperationError(TTSError):
 
 __all__ = [
     "AudioFormatError",
+    "AudioStorageError",
     "ModelLoadError",
     "TTSError",
     "UnsupportedOperationError",
