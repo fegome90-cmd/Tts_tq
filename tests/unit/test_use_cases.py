@@ -339,9 +339,171 @@ class TestDTOs:
         with_instruct = GenerateSpeechRequest(text="Test", instruct="speak calmly")
         assert with_instruct.instruct == "speak calmly"
 
-    def test_generate_speech_response_is_removed(self):
-        """GenerateSpeechResponse MUST be deleted from dto.py (R4)."""
-        import importlib
+        def test_generate_speech_response_is_removed(self):
+            """GenerateSpeechResponse MUST be deleted from dto.py (R4)."""
+            import importlib
 
-        dto = importlib.import_module("tts_lab.application.dto")
-        assert not hasattr(dto, "GenerateSpeechResponse")
+            dto = importlib.import_module("tts_lab.application.dto")
+            assert not hasattr(dto, "GenerateSpeechResponse")
+
+
+class TestGenerationFailureObservability:
+    """Internal DEBUG logging for generation failures (item 5).
+
+    The GenerationResult refactor turned failures into data, which dropped
+    the free exception-path logging. These tests gate a DEBUG-level log with
+    exc_info so operators/debuggers can trace failures, WITHOUT leaking
+    anything to agent surfaces.
+    """
+
+    def test_debug_log_on_tts_error_has_exc_info(self, caplog):
+        """DEBUG log contains exc_info when TTSError is raised by generate()."""
+        import logging
+
+        from tts_lab.application.dto import GenerateSpeechRequest
+        from tts_lab.application.use_cases import GenerateSpeechUseCase
+        from tts_lab.domain.exceptions import ModelLoadError
+
+        mock_client = Mock()
+        mock_client.generate.side_effect = ModelLoadError("model not found")
+        mock_repo = Mock()
+
+        caplog.set_level(logging.DEBUG, logger="tts_lab.application.use_cases")
+
+        use_case = GenerateSpeechUseCase(tts_client=mock_client, audio_repo=mock_repo)
+        request = GenerateSpeechRequest(text="Hello")
+        use_case.execute(request)
+
+        record = next(
+            r for r in caplog.records if "Speech generation failed" in r.message
+        )
+        assert record.levelno == logging.DEBUG
+        assert record.exc_info is not None
+
+    def test_debug_log_on_oserror_has_exc_info(self, caplog):
+        """DEBUG log contains exc_info when OSError is raised by save_with_hash()."""
+        import logging
+
+        from tts_lab.application.dto import GenerateSpeechRequest
+        from tts_lab.application.use_cases import GenerateSpeechUseCase
+        from tts_lab.domain.entities import AudioResult
+
+        mock_client = Mock()
+        mock_client.generate.return_value = AudioResult(
+            audio_data=b"fake", sample_rate=24000, duration_seconds=1.0
+        )
+        mock_repo = Mock()
+        mock_repo.save_with_hash.side_effect = OSError("disk full")
+
+        caplog.set_level(logging.DEBUG, logger="tts_lab.application.use_cases")
+
+        use_case = GenerateSpeechUseCase(tts_client=mock_client, audio_repo=mock_repo)
+        request = GenerateSpeechRequest(text="Hello")
+        use_case.execute(request)
+
+        record = next(
+            r for r in caplog.records if "Speech generation failed" in r.message
+        )
+        assert record.levelno == logging.DEBUG
+        assert record.exc_info is not None
+
+    def test_original_error_preserved_in_generation_failure(self):
+        """Regression guard: error and __cause__ chain intact after logging."""
+        from tts_lab.application.dto import GenerateSpeechRequest
+        from tts_lab.application.use_cases import GenerateSpeechUseCase
+        from tts_lab.domain.entities import AudioResult, GenerationFailure
+        from tts_lab.domain.exceptions import AudioStorageError, ModelLoadError
+
+        # TTSError branch: original error preserved directly
+        mock_client = Mock()
+        mock_client.generate.side_effect = ModelLoadError("model not found")
+        mock_repo = Mock()
+        use_case = GenerateSpeechUseCase(tts_client=mock_client, audio_repo=mock_repo)
+        response = use_case.execute(GenerateSpeechRequest(text="Hi"))
+        assert isinstance(response, GenerationFailure)
+        assert isinstance(response.error, ModelLoadError)
+
+        # OSError branch: __cause__ chain intact
+        mock_client = Mock()
+        mock_client.generate.return_value = AudioResult(
+            audio_data=b"fake", sample_rate=24000, duration_seconds=1.0
+        )
+        mock_repo = Mock()
+        mock_repo.save_with_hash.side_effect = OSError("disk full")
+        use_case = GenerateSpeechUseCase(tts_client=mock_client, audio_repo=mock_repo)
+        response = use_case.execute(GenerateSpeechRequest(text="Hi"))
+        assert isinstance(response, GenerationFailure)
+        assert isinstance(response.error, AudioStorageError)
+        assert isinstance(response.error.__cause__, OSError)
+
+    def test_sensitive_sentinel_does_not_leak_to_cli(self, capsys):
+        """Error message with sentinel MUST NOT leak to stdout or stderr."""
+        from tts_lab.application.dto import GenerateSpeechRequest
+        from tts_lab.application.use_cases import GenerateSpeechUseCase
+        from tts_lab.domain.exceptions import ModelLoadError
+
+        mock_client = Mock()
+        mock_client.generate.side_effect = ModelLoadError(
+            "KEY=sk-live-xxxx sensitive body"
+        )
+        mock_repo = Mock()
+
+        use_case = GenerateSpeechUseCase(tts_client=mock_client, audio_repo=mock_repo)
+        request = GenerateSpeechRequest(text="Hello")
+        use_case.execute(request)
+
+        out_err = capsys.readouterr()
+        sentinel = "sk-live-xxxx"
+        assert sentinel not in out_err.out
+        assert sentinel not in out_err.err
+
+    def test_sensitive_sentinel_does_not_leak_to_agent_card(self):
+        """Error message with sentinel MUST NOT leak to to_agent_card output."""
+        from tts_lab.application.agent_card import to_agent_card
+        from tts_lab.domain.entities import GenerationFailure
+        from tts_lab.domain.exceptions import ModelLoadError
+
+        noisy = ModelLoadError("KEY=sk-live-xxxx sensitive body")
+        result = GenerationFailure(error=noisy)
+        card = to_agent_card(result)
+
+        card_text = " ".join(f"{k}={v}" for k, v in card.items())
+        assert "sk-live-xxxx" not in card_text
+        assert "sensitive body" not in card_text
+        assert "KEY=" not in card_text
+
+    def test_agent_card_failure_only_has_error_class_name(self):
+        """Agent card must contain only status + error_class_name for failure."""
+        from tts_lab.application.agent_card import to_agent_card
+        from tts_lab.domain.entities import GenerationFailure
+        from tts_lab.domain.exceptions import ModelLoadError
+
+        result = GenerationFailure(error=ModelLoadError("boom"))
+        card = to_agent_card(result)
+        assert card == {"status": "failure", "error_class_name": "ModelLoadError"}
+
+    def test_success_path_does_not_emit_failure_log(self, caplog):
+        """Success path must NOT emit a 'Speech generation failed' log record."""
+        import logging
+
+        from tts_lab.application.dto import GenerateSpeechRequest
+        from tts_lab.application.use_cases import GenerateSpeechUseCase
+        from tts_lab.domain.entities import AudioResult
+
+        mock_client = Mock()
+        mock_client.generate.return_value = AudioResult(
+            audio_data=b"fake", sample_rate=24000, duration_seconds=1.0
+        )
+        mock_repo = Mock()
+        mock_repo.save_with_hash.return_value = "/output/test.wav"
+
+        caplog.set_level(logging.DEBUG, logger="tts_lab.application.use_cases")
+
+        use_case = GenerateSpeechUseCase(tts_client=mock_client, audio_repo=mock_repo)
+        request = GenerateSpeechRequest(text="Hello")
+        use_case.execute(request)
+
+        failure_records = [
+            r for r in caplog.records if "Speech generation failed" in r.message
+        ]
+        assert len(failure_records) == 0
