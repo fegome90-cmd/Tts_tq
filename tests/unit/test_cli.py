@@ -247,3 +247,66 @@ class TestCLICommands:
         combined = (result.stdout or "") + (result.output or "")
         assert "Inworld" in combined
         assert "not supported" in combined.lower()
+
+
+class TestGenerateCommandResultEnvelope:
+    """CLI generate consumes GenerationResult via match (R5, Phase 5)."""
+
+    def test_generate_success_prints_path_and_duration(self, tmp_path):
+        """Success branch: CLI prints path + Duration, exit 0."""
+        from tts_lab.cli import app
+        from tts_lab.domain.entities import GenerationSuccess
+
+        # Mock GenerateSpeechUseCase to return GenerationSuccess without
+        # touching the model or filesystem.
+        fake_result = GenerationSuccess(
+            audio_path=str(tmp_path / "out.wav"),
+            warnings=(),
+            duration_seconds=2.5,
+            sample_rate=24000,
+        )
+
+        with patch("tts_lab.cli.GenerateSpeechUseCase") as mock_uc_cls:
+            mock_uc_cls.return_value.execute.return_value = fake_result
+            result = runner.invoke(
+                app,
+                [
+                    "generate",
+                    "Hello",
+                    "-o",
+                    str(tmp_path / "out.wav"),
+                ],
+            )
+
+        assert result.exit_code == 0
+        assert "out.wav" in (result.stdout or "")
+        assert "Duration" in (result.stdout or "")
+
+    def test_generate_failure_prints_error_class_and_exits_1(self, tmp_path):
+        """Failure branch: CLI prints error_class_name, exit 1, NO body leak."""
+        from tts_lab.cli import app
+        from tts_lab.domain.entities import GenerationFailure
+        from tts_lab.domain.exceptions import ModelLoadError
+
+        # Noisy error body — MUST NOT leak to stdout.
+        noisy = ModelLoadError("KEY=sk-live-xxxx noisy body")
+        fake_result = GenerationFailure(error=noisy)
+
+        with patch("tts_lab.cli.GenerateSpeechUseCase") as mock_uc_cls:
+            mock_uc_cls.return_value.execute.return_value = fake_result
+            result = runner.invoke(
+                app,
+                [
+                    "generate",
+                    "Hello",
+                    "-o",
+                    str(tmp_path / "out.wav"),
+                ],
+            )
+
+        assert result.exit_code == 1
+        combined = (result.stdout or "") + (result.output or "")
+        assert "ModelLoadError" in combined
+        # Sanitizer: noisy body MUST NOT leak.
+        assert "sk-live" not in combined
+        assert "noisy body" not in combined

@@ -28,14 +28,11 @@ class TestGenerateSpeechUseCase:
 
         assert use_case is not None
 
-    def test_execute_returns_response(self):
-        """Execute should return GenerateSpeechResponse."""
-        from tts_lab.application.dto import (
-            GenerateSpeechRequest,
-            GenerateSpeechResponse,
-        )
+    def test_execute_returns_generation_success(self):
+        """Execute should return GenerationSuccess with path/warnings/duration/sample_rate."""
+        from tts_lab.application.dto import GenerateSpeechRequest
         from tts_lab.application.use_cases import GenerateSpeechUseCase
-        from tts_lab.domain.entities import AudioResult
+        from tts_lab.domain.entities import AudioResult, GenerationSuccess
 
         # Setup mocks
         mock_client = Mock()
@@ -53,10 +50,59 @@ class TestGenerateSpeechUseCase:
         request = GenerateSpeechRequest(text="Hello world", language="English")
         response = use_case.execute(request)
 
-        # Verify
-        assert isinstance(response, GenerateSpeechResponse)
+        # Verify GenerationSuccess variant with all scalars
+        assert isinstance(response, GenerationSuccess)
         assert response.audio_path == "/output/speech_abc123.wav"
+        assert response.warnings == ()
         assert response.duration_seconds == pytest.approx(2.5)
+        assert response.sample_rate == 24000
+
+    def test_execute_failure_from_generate(self):
+        """TTSError from generate -> GenerationFailure pass-through (R2)."""
+        from tts_lab.application.dto import GenerateSpeechRequest
+        from tts_lab.application.use_cases import GenerateSpeechUseCase
+        from tts_lab.domain.entities import GenerationFailure
+        from tts_lab.domain.exceptions import ModelLoadError, TTSError
+
+        mock_client = Mock()
+        mock_client.generate.side_effect = ModelLoadError("model not found")
+        mock_repo = Mock()
+
+        use_case = GenerateSpeechUseCase(tts_client=mock_client, audio_repo=mock_repo)
+        request = GenerateSpeechRequest(text="Hi")
+        response = use_case.execute(request)
+
+        assert isinstance(response, GenerationFailure)
+        assert isinstance(response.error, ModelLoadError)
+        assert isinstance(response.error, TTSError)  # typed-error promise
+        # save_with_hash MUST NOT be invoked when generate fails.
+        mock_repo.save_with_hash.assert_not_called()
+
+    def test_execute_failure_from_save_with_hash_oserror(self):
+        """OSError from save_with_hash -> GenerationFailure(AudioStorageError) (R2 trap)."""
+        from tts_lab.application.dto import GenerateSpeechRequest
+        from tts_lab.application.use_cases import GenerateSpeechUseCase
+        from tts_lab.domain.entities import AudioResult, GenerationFailure
+        from tts_lab.domain.exceptions import AudioStorageError, TTSError
+
+        mock_client = Mock()
+        mock_client.generate.return_value = AudioResult(
+            audio_data=b"fake", sample_rate=24000, duration_seconds=1.0
+        )
+        mock_repo = Mock()
+        mock_repo.save_with_hash.side_effect = OSError("disk full")
+
+        use_case = GenerateSpeechUseCase(tts_client=mock_client, audio_repo=mock_repo)
+        request = GenerateSpeechRequest(text="Hi")
+        response = use_case.execute(request)
+
+        # OSError MUST be wrapped into AudioStorageError(TTSError), NOT escape.
+        assert isinstance(response, GenerationFailure)
+        assert isinstance(response.error, AudioStorageError)
+        assert isinstance(response.error, TTSError)  # typed-error promise holds
+        # Original OSError preserved via `from e` (exception chaining).
+        assert isinstance(response.error.__cause__, OSError)
+        assert "disk full" in str(response.error)
 
     def test_execute_calls_tts_client_with_correct_request(self):
         """Execute should call TTSClient.generate with correct TTSRequest."""
@@ -119,9 +165,7 @@ class TestGenerateSpeechUseCase:
         mock_repo.save_with_hash.return_value = "/output/test.wav"
 
         use_case = GenerateSpeechUseCase(tts_client=mock_client, audio_repo=mock_repo)
-        request = GenerateSpeechRequest(
-            text="Hello", language="English", speaker="Dennis"
-        )
+        request = GenerateSpeechRequest(text="Hello", language="English", speaker="Dennis")
         use_case.execute(request)
 
         mock_client.generate.assert_called_once()
@@ -173,9 +217,7 @@ class TestGenerateSpeechUseCase:
         mock_repo.save_with_hash.return_value = "/output/test.wav"
 
         use_case = GenerateSpeechUseCase(tts_client=mock_client, audio_repo=mock_repo)
-        request = GenerateSpeechRequest(
-            text="Hello", language="English", instruct="speak calmly"
-        )
+        request = GenerateSpeechRequest(text="Hello", language="English", instruct="speak calmly")
         use_case.execute(request)
 
         mock_client.generate.assert_called_once()
@@ -297,12 +339,9 @@ class TestDTOs:
         with_instruct = GenerateSpeechRequest(text="Test", instruct="speak calmly")
         assert with_instruct.instruct == "speak calmly"
 
-    def test_generate_speech_response_is_frozen(self):
-        """GenerateSpeechResponse should be immutable."""
-        from dataclasses import FrozenInstanceError
+    def test_generate_speech_response_is_removed(self):
+        """GenerateSpeechResponse MUST be deleted from dto.py (R4)."""
+        import importlib
 
-        from tts_lab.application.dto import GenerateSpeechResponse
-
-        response = GenerateSpeechResponse(audio_path="/test.wav", duration_seconds=1.0)
-        with pytest.raises(FrozenInstanceError):
-            setattr(response, "audio_path", "/changed.wav")  # noqa: B010
+        dto = importlib.import_module("tts_lab.application.dto")
+        assert not hasattr(dto, "GenerateSpeechResponse")
