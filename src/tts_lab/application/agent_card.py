@@ -48,3 +48,12 @@ def to_agent_card(result: GenerationResult) -> dict[str, str]:
                 # Class __name__ only — NEVER str(result.error).
                 "error_class_name": type(result.error).__name__,
             }
+        case _:
+            # Fail-closed defense: mypy makes the match exhaustive statically,
+            # but Python does not enforce GenerationResult at runtime. An
+            # unexpected value (untyped caller, broken mock, deserialization,
+            # `Any`, or a future variant added without updating this sanitizer)
+            # MUST raise rather than fall through and implicitly return None,
+            # which would contradict both the `dict[str, str]` return type and
+            # the "fail-closed" promise. Generic message — no object data.
+            raise TypeError("Unsupported generation result type")
